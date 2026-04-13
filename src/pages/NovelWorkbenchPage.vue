@@ -66,19 +66,10 @@ function buildParams() {
     editor_notes: editorNotes.value.trim() || undefined,
     manual_context: manualContext.value.trim() || undefined,
     persist: 0 as const,
-  }
-  if (inputMode.value === 'idea') {
-    return {
-      ...base,
-      idea: idea.value.trim() || undefined,
-      outline: undefined,
-    }
-  }
-  return {
-    ...base,
+    idea: idea.value.trim() || undefined,
     outline: outline.value.trim() || undefined,
-    idea: undefined,
   }
+  return base
 }
 
 async function onPreview() {
