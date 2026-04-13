@@ -33,13 +33,20 @@ defineProps<{ item: NovelSummary }>()
       </div>
     </div>
 
-    <router-link
-      class="inline-flex shrink-0 items-center gap-1 rounded-md bg-blue-500 px-3 py-2 text-xs font-semibold text-white transition hover:bg-blue-400"
-      :to="{ name: 'workbench', params: { novelId: item.id } }"
-    >
-      进入创作
-      <ChevronRight class="h-4 w-4" />
-    </router-link>
+    <div class="flex shrink-0 flex-col gap-2">
+      <router-link
+        class="inline-flex items-center justify-center rounded-md border border-zinc-700/60 bg-zinc-900/30 px-3 py-2 text-xs font-semibold text-zinc-100 transition hover:bg-zinc-900/60"
+        :to="{ name: 'novel-reader', params: { novelId: item.id } }"
+      >
+        阅读整本
+      </router-link>
+      <router-link
+        class="inline-flex items-center justify-center gap-1 rounded-md bg-blue-500 px-3 py-2 text-xs font-semibold text-white transition hover:bg-blue-400"
+        :to="{ name: 'workbench', params: { novelId: item.id } }"
+      >
+        进入创作
+        <ChevronRight class="h-4 w-4" />
+      </router-link>
+    </div>
   </div>
 </template>
-
