@@ -2,7 +2,7 @@
 import { computed, onUnmounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import TopNav from '@/components/TopNav.vue'
-import { buildGenerateChapterUrl, previewContext, type PreviewContextResponse } from '@/utils/api'
+import { buildGenerateChapterUrl, listChapters, previewContext, type ChapterItem, type PreviewContextResponse } from '@/utils/api'
 
 const route = useRoute()
 const novelId = computed(() => String(route.params.novelId ?? ''))
@@ -25,6 +25,11 @@ const isGenerating = ref(false)
 const generateError = ref<string | null>(null)
 const generateStatus = ref<string | null>(null)
 
+const saveMode = ref<'none' | 'byIndex' | 'existing'>('none')
+const chapters = ref<ChapterItem[]>([])
+const chaptersError = ref<string | null>(null)
+const selectedChapterId = ref<string>('')
+
 const previewAbort = new AbortController()
 const esRef = ref<EventSource | null>(null)
 
@@ -34,6 +39,8 @@ function buildParams() {
     chapter_index: Math.max(1, Number(chapterIndex.value || 1)),
     editor_notes: editorNotes.value.trim() || undefined,
     manual_context: manualContext.value.trim() || undefined,
+    persist: saveMode.value === 'none' ? (0 as const) : (1 as const),
+    chapter_id: saveMode.value === 'existing' && selectedChapterId.value ? selectedChapterId.value : undefined,
   }
   if (inputMode.value === 'idea') {
     return {
@@ -80,6 +87,19 @@ function clearOutput() {
   generateStatus.value = null
 }
 
+async function loadChapters() {
+  chaptersError.value = null
+  try {
+    const res = await listChapters(novelId.value, previewAbort.signal)
+    chapters.value = res.items
+    if (!selectedChapterId.value && res.items.length) {
+      selectedChapterId.value = res.items[0]?.id ?? ''
+    }
+  } catch (err) {
+    chaptersError.value = err instanceof Error ? err.message : '章节加载失败'
+  }
+}
+
 function onGenerate() {
   generateError.value = null
   generateStatus.value = null
@@ -92,6 +112,10 @@ function onGenerate() {
   }
   if (!params.idea && !params.outline) {
     generateError.value = '需要填写 idea 或 outline'
+    return
+  }
+  if (saveMode.value === 'existing' && !params.chapter_id) {
+    generateError.value = '请选择要保存的章节'
     return
   }
 
@@ -140,6 +164,8 @@ onUnmounted(() => {
   previewAbort.abort()
   stopGenerate()
 })
+
+void loadChapters()
 </script>
 
 <template>
@@ -182,6 +208,77 @@ onUnmounted(() => {
               >
                 用 outline
               </button>
+            </div>
+
+            <div class="mt-4">
+              <div class="text-xs font-semibold text-zinc-200">生成结果保存</div>
+              <div class="mt-2 flex flex-wrap items-center gap-2">
+                <button
+                  class="rounded-md border px-3 py-1.5 text-xs font-semibold transition"
+                  :class="
+                    saveMode === 'none'
+                      ? 'border-blue-400/70 bg-blue-500/20 text-blue-100'
+                      : 'border-zinc-700/60 bg-zinc-900/30 text-zinc-200 hover:bg-zinc-900/60'
+                  "
+                  type="button"
+                  @click="saveMode = 'none'"
+                >
+                  不保存
+                </button>
+                <button
+                  class="rounded-md border px-3 py-1.5 text-xs font-semibold transition"
+                  :class="
+                    saveMode === 'byIndex'
+                      ? 'border-blue-400/70 bg-blue-500/20 text-blue-100'
+                      : 'border-zinc-700/60 bg-zinc-900/30 text-zinc-200 hover:bg-zinc-900/60'
+                  "
+                  type="button"
+                  @click="saveMode = 'byIndex'"
+                >
+                  按章节序号保存
+                </button>
+                <button
+                  class="rounded-md border px-3 py-1.5 text-xs font-semibold transition"
+                  :class="
+                    saveMode === 'existing'
+                      ? 'border-blue-400/70 bg-blue-500/20 text-blue-100'
+                      : 'border-zinc-700/60 bg-zinc-900/30 text-zinc-200 hover:bg-zinc-900/60'
+                  "
+                  type="button"
+                  @click="
+                    saveMode = 'existing';
+                    void loadChapters();
+                  "
+                >
+                  保存到已有章节
+                </button>
+              </div>
+
+              <div v-if="saveMode === 'byIndex'" class="mt-2 text-[11px] text-zinc-400">
+                将保存到当前章节序号对应的章节（不存在会自动创建）。
+              </div>
+
+              <div v-else-if="saveMode === 'existing'" class="mt-3">
+                <div class="flex flex-wrap items-center gap-2">
+                  <select
+                    v-model="selectedChapterId"
+                    class="w-full rounded-md border border-zinc-700/60 bg-zinc-900/30 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-blue-400/70 md:w-auto"
+                  >
+                    <option v-for="c in chapters" :key="c.id" :value="c.id">
+                      {{ c.title || `第${c.order}章` }}
+                    </option>
+                  </select>
+                  <button
+                    class="rounded-md border border-zinc-700/60 bg-zinc-900/30 px-3 py-2 text-xs font-semibold text-zinc-100 transition hover:bg-zinc-900/60"
+                    type="button"
+                    @click="loadChapters"
+                  >
+                    刷新章节
+                  </button>
+                </div>
+                <div v-if="chaptersError" class="mt-2 text-[11px] text-red-200/80">{{ chaptersError }}</div>
+                <div v-else-if="chapters.length === 0" class="mt-2 text-[11px] text-zinc-400">当前小说还没有章节。</div>
+              </div>
             </div>
 
             <div class="mt-4 grid gap-4 md:grid-cols-2">

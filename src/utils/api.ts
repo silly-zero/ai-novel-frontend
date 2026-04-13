@@ -48,6 +48,8 @@ export type PreviewContextResponse = {
 
 export type PreviewContextParams = {
   novel_id: string
+  chapter_id?: string
+  persist?: 0 | 1
   chapter_index?: number
   outline?: string
   idea?: string
@@ -223,6 +225,8 @@ export function previewContext(params: PreviewContextParams, signal?: AbortSigna
 export function buildGenerateChapterUrl(params: PreviewContextParams) {
   const path = withQuery('/api/v1/novel/generate', {
     novel_id: params.novel_id,
+    chapter_id: params.chapter_id,
+    persist: params.persist,
     chapter_index: params.chapter_index,
     outline: params.outline,
     idea: params.idea,
