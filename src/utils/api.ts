@@ -8,6 +8,11 @@ export type NovelSummary = {
   updated_at: string
 }
 
+export type NovelDetail = NovelSummary & {
+  idea?: string
+  outline?: string
+}
+
 export type ChapterItem = {
   id: string
   novel_id: string
@@ -58,7 +63,7 @@ export type PreviewContextParams = {
 }
 
 export type GetNovelResponse = {
-  item: NovelSummary
+  item: NovelDetail
   chapters: ChapterItem[]
 }
 
@@ -90,6 +95,15 @@ export type UpdateChapterRequest = {
 
 export type UpdateChapterResponse = {
   item: ChapterItem
+}
+
+export type UpdateNovelRequest = {
+  idea?: string
+  outline?: string
+}
+
+export type UpdateNovelResponse = {
+  item: NovelDetail
 }
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? ''
@@ -178,6 +192,15 @@ export function createNovel(payload: CreateNovelRequest, signal?: AbortSignal) {
 
 export function getNovel(id: string, signal?: AbortSignal) {
   return apiGet<GetNovelResponse>(`/api/v1/novels/${encodeURIComponent(id)}`, signal)
+}
+
+export function updateNovel(id: string, payload: UpdateNovelRequest, signal?: AbortSignal) {
+  return apiJson<UpdateNovelResponse>(
+    'PUT',
+    `/api/v1/novels/${encodeURIComponent(id)}`,
+    apiDeleteEmpty({ ...payload }),
+    signal,
+  )
 }
 
 export function listChapters(novelId: string, signal?: AbortSignal) {
