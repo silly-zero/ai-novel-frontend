@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import TopNav from '@/components/TopNav.vue'
-import { createChapter, getNovel, type ChapterItem, type NovelSummary } from '@/utils/api'
+import { createChapter, deleteChapter, getNovel, type ChapterItem, type NovelSummary } from '@/utils/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -19,6 +19,8 @@ const activeChapterId = ref<string | null>(null)
 
 const createLoading = ref(false)
 const createError = ref<string | null>(null)
+const deleteLoadingId = ref<string | null>(null)
+const deleteError = ref<string | null>(null)
 
 const abort = new AbortController()
 
@@ -55,6 +57,26 @@ async function onCreateChapter() {
     createError.value = err instanceof Error ? err.message : '新建章节失败'
   } finally {
     createLoading.value = false
+  }
+}
+
+async function onDeleteChapter(chapter: ChapterItem) {
+  if (deleteLoadingId.value) return
+  const ok = window.confirm(`确认删除章节「${chapter.title || `第${chapter.order}章`}」？删除后不可恢复。`)
+  if (!ok) return
+
+  deleteError.value = null
+  deleteLoadingId.value = chapter.id
+  try {
+    await deleteChapter(chapter.id, abort.signal)
+    await refresh()
+    if (activeChapterId.value === chapter.id) {
+      activeChapterId.value = chapters.value[0]?.id ?? null
+    }
+  } catch (err) {
+    deleteError.value = err instanceof Error ? err.message : '删除失败'
+  } finally {
+    deleteLoadingId.value = null
   }
 }
 
@@ -170,6 +192,9 @@ onUnmounted(() => {
           <div v-if="createError" class="mt-4 rounded-md border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200">
             {{ createError }}
           </div>
+          <div v-if="deleteError" class="mt-4 rounded-md border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200">
+            {{ deleteError }}
+          </div>
         </div>
 
         <div class="grid gap-4 lg:grid-cols-3">
@@ -216,6 +241,14 @@ onUnmounted(() => {
                   >
                     编辑
                   </router-link>
+                  <button
+                    class="shrink-0 rounded-md border border-red-500/40 bg-red-500/10 px-2 py-1 text-[11px] font-semibold text-red-200 transition hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-60"
+                    :disabled="deleteLoadingId === c.id"
+                    type="button"
+                    @click.stop="onDeleteChapter(c)"
+                  >
+                    {{ deleteLoadingId === c.id ? '删除中...' : '删除' }}
+                  </button>
                 </div>
               </button>
             </div>

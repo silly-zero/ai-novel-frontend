@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import TopNav from '@/components/TopNav.vue'
-import { getChapter, updateChapter, type ChapterItem } from '@/utils/api'
+import { deleteChapter, getChapter, updateChapter, type ChapterItem } from '@/utils/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -61,6 +61,29 @@ async function onSave() {
     saveMessage.value = `已保存：${new Date(res.item.updated_at).toLocaleString()}`
   } catch (err) {
     errorMessage.value = err instanceof Error ? err.message : '保存失败'
+  } finally {
+    isSaving.value = false
+  }
+}
+
+async function onDelete() {
+  if (!item.value || isSaving.value) return
+  const ok = window.confirm('确认删除该章节？删除后不可恢复。')
+  if (!ok) return
+
+  isSaving.value = true
+  errorMessage.value = null
+  saveMessage.value = null
+  const targetNovelId = item.value.novel_id
+  try {
+    await deleteChapter(item.value.id, abort.signal)
+    if (targetNovelId) {
+      await router.push({ name: 'novel-reader', params: { novelId: targetNovelId } })
+    } else {
+      await router.push({ name: 'home' })
+    }
+  } catch (err) {
+    errorMessage.value = err instanceof Error ? err.message : '删除失败'
   } finally {
     isSaving.value = false
   }
@@ -173,6 +196,15 @@ onUnmounted(() => {
               @click="refresh"
             >
               重新加载
+            </button>
+
+            <button
+              class="rounded-md border border-red-500/40 bg-red-500/10 px-4 py-2 text-xs font-semibold text-red-200 transition hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-60"
+              :disabled="isSaving"
+              type="button"
+              @click="onDelete"
+            >
+              删除章节
             </button>
 
             <button

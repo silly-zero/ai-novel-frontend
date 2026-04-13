@@ -151,6 +151,21 @@ async function apiJson<T>(method: 'POST' | 'PUT' | 'PATCH', path: string, body: 
   return (await res.json()) as T
 }
 
+async function apiDelete(path: string, signal?: AbortSignal) {
+  const res = await fetch(withBaseUrl(path), {
+    method: 'DELETE',
+    headers: {
+      Accept: 'application/json',
+    },
+    signal,
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    const message = text ? `${res.status} ${res.statusText}: ${text}` : `${res.status} ${res.statusText}`
+    throw new Error(message)
+  }
+}
+
 export function listNovels(signal?: AbortSignal) {
   return apiGet<ListNovelsResponse>('/api/v1/novels', signal)
 }
@@ -187,6 +202,10 @@ export function updateChapter(id: string, payload: UpdateChapterRequest, signal?
     apiDeleteEmpty({ ...payload }),
     signal,
   )
+}
+
+export function deleteChapter(id: string, signal?: AbortSignal) {
+  return apiDelete(`/api/v1/chapters/${encodeURIComponent(id)}`, signal)
 }
 
 export function previewContext(params: PreviewContextParams, signal?: AbortSignal) {
