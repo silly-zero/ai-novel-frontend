@@ -9,7 +9,6 @@ const route = useRoute()
 const router = useRouter()
 const novelId = computed(() => String(route.params.novelId ?? ''))
 
-const inputMode = ref<'idea' | 'outline'>('idea')
 const chapterIndex = ref(1)
 const outlineStart = ref(1)
 const outlineEnd = ref(10)
@@ -52,7 +51,7 @@ const hasGenerated = ref(false)
 const previewAbort = new AbortController()
 const esRef = ref<EventSource | null>(null)
 
-function buildParams(): PreviewContextParams {
+function buildChapterParams(): PreviewContextParams {
   const base: PreviewContextParams = {
     novel_id: novelId.value,
     chapter_index: Math.max(1, Number(chapterIndex.value || 1)),
@@ -60,15 +59,21 @@ function buildParams(): PreviewContextParams {
     manual_context: manualContext.value.trim() || undefined,
     persist: 0 as const,
   }
-  if (inputMode.value === 'idea') {
-    base.idea = idea.value.trim() || undefined
-    if (outline.value.trim()) {
-      base.existing_outline = outline.value.trim() || undefined
-    }
-    base.outline_start = outlineStart.value
-    base.outline_end = outlineEnd.value
-  } else {
-    base.outline = outline.value.trim() || undefined
+  base.idea = idea.value.trim() || undefined
+  if (outline.value.trim()) {
+    base.existing_outline = outline.value.trim() || undefined
+  }
+  return base
+}
+
+function buildOutlineParams(): PreviewContextParams {
+  const base: PreviewContextParams = {
+    novel_id: novelId.value,
+    chapter_index: 1,
+    idea: idea.value.trim() || undefined,
+    existing_outline: outline.value.trim() || undefined,
+    outline_start: Math.max(1, Number(outlineStart.value || 1)),
+    outline_end: Math.max(1, Number(outlineEnd.value || 10)),
   }
   return base
 }
@@ -97,12 +102,32 @@ async function onPreview() {
   previewError.value = null
   preview.value = null
   try {
-    const params = buildParams()
+    const params = buildChapterParams()
     if (!params.novel_id) throw new Error('novel_id 缺失')
-    if (!params.idea && !params.outline) throw new Error('需要填写 idea 或 outline')
+    if (!params.idea && !params.existing_outline) throw new Error('需要填写 idea 或全书大纲')
     preview.value = await previewContext(params, previewAbort.signal)
   } catch (err) {
     previewError.value = err instanceof Error ? err.message : '预览失败'
+  } finally {
+    previewLoading.value = false
+  }
+}
+
+async function onExtendOutline() {
+  previewLoading.value = true
+  previewError.value = null
+  try {
+    const params = buildOutlineParams()
+    if (!params.novel_id) throw new Error('novel_id 缺失')
+    if (!params.idea) throw new Error('需要先填写 Idea 才能生成/续写大纲')
+    if (!params.outline_start || !params.outline_end) throw new Error('请填写大纲生成范围')
+    if (params.outline_end < params.outline_start) throw new Error('结束章节不能小于起始章节')
+    const res = await previewContext(params, previewAbort.signal)
+    preview.value = res
+    outline.value = res.full_outline
+    outlineSaveMessage.value = '已生成/续写大纲（尚未保存），请点击“保存大纲”写入小说'
+  } catch (err) {
+    previewError.value = err instanceof Error ? err.message : '生成大纲失败'
   } finally {
     previewLoading.value = false
   }
@@ -272,13 +297,13 @@ function onGenerate() {
   generateStatus.value = null
   meta.value = null
 
-  const params = buildParams()
+  const params = buildChapterParams()
   if (!params.novel_id) {
     generateError.value = 'novel_id 缺失'
     return
   }
-  if (!params.idea && !params.outline) {
-    generateError.value = '需要填写 idea 或 outline'
+  if (!params.idea && !params.existing_outline) {
+    generateError.value = '需要填写 idea 或全书大纲'
     return
   }
 
@@ -347,70 +372,94 @@ onMounted(() => {
         <div class="mt-1 text-xs text-zinc-400">novel_id: {{ novelId }}</div>
       </div>
 
+      <div class="mb-4 rounded-lg border border-zinc-800/60 bg-[#111A2E] p-6">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div class="text-sm font-semibold text-zinc-100">全书大纲</div>
+            <div class="mt-1 text-xs text-zinc-400">建议先生成/编辑大纲，再生成章节</div>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <span
+              class="rounded border px-2 py-0.5 text-[11px]"
+              :class="outlineDirty ? 'border-amber-500/40 bg-amber-500/10 text-amber-200' : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'"
+            >
+              {{ outlineDirty ? '未保存' : '已保存' }}
+            </span>
+            <button
+              class="rounded-md bg-blue-500 px-3 py-2 text-xs font-semibold text-white transition hover:bg-blue-400 disabled:cursor-not-allowed disabled:opacity-60"
+              :disabled="isOutlineSaving || !outlineDirty"
+              type="button"
+              @click="saveOutline"
+            >
+              {{ isOutlineSaving ? '保存中...' : '保存大纲' }}
+            </button>
+            <button
+              class="rounded-md border border-zinc-700/60 bg-zinc-900/30 px-3 py-2 text-xs font-semibold text-zinc-100 transition hover:bg-zinc-900/60 disabled:cursor-not-allowed disabled:opacity-60"
+              :disabled="novelLoading"
+              type="button"
+              @click="loadNovel"
+            >
+              {{ novelLoading ? '加载中...' : '重新加载' }}
+            </button>
+          </div>
+        </div>
+
+        <div v-if="outlineSaveMessage" class="mt-3 text-[11px] text-zinc-300">{{ outlineSaveMessage }}</div>
+        <div v-if="novelError" class="mt-2 text-[11px] text-red-200/80">{{ novelError }}</div>
+
+        <div class="mt-4 grid gap-4 lg:grid-cols-2">
+          <div>
+            <div class="text-xs font-semibold text-zinc-200">Idea（小说核心设定）</div>
+            <textarea
+              v-model="idea"
+              class="mt-2 min-h-28 w-full resize-y rounded-md border border-zinc-700/60 bg-zinc-900/30 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-blue-400/70"
+              placeholder="一句话或一段话描述故事核心设定"
+            />
+            <div class="mt-3 flex items-center gap-2">
+              <span class="text-xs text-zinc-400">大纲生成范围：</span>
+              <div class="flex items-center gap-1 text-xs">
+                <span class="text-zinc-400">第</span>
+                <input
+                  v-model.number="outlineStart"
+                  type="number"
+                  min="1"
+                  class="w-14 rounded border border-zinc-700/60 bg-zinc-900/30 px-1 py-1 text-center text-zinc-100 outline-none focus:border-blue-400/70"
+                >
+                <span class="text-zinc-400">到</span>
+                <input
+                  v-model.number="outlineEnd"
+                  type="number"
+                  min="1"
+                  class="w-14 rounded border border-zinc-700/60 bg-zinc-900/30 px-1 py-1 text-center text-zinc-100 outline-none focus:border-blue-400/70"
+                >
+                <span class="text-zinc-400">章</span>
+              </div>
+              <button
+                class="rounded-md border border-blue-400/70 bg-blue-500/20 px-3 py-2 text-xs font-semibold text-blue-100 transition hover:bg-blue-500/30 disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="previewLoading"
+                type="button"
+                @click="onExtendOutline"
+              >
+                {{ previewLoading ? '生成中...' : '生成/续写大纲' }}
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <div class="text-xs font-semibold text-zinc-200">Full Outline（可编辑）</div>
+            <textarea
+              v-model="outline"
+              class="mt-2 min-h-64 w-full resize-y rounded-md border border-zinc-700/60 bg-zinc-900/30 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-blue-400/70"
+              placeholder="这里存放全书大纲；章节多时建议在此编辑、搜索"
+            />
+          </div>
+        </div>
+      </div>
+
       <div class="grid gap-4 lg:grid-cols-2">
         <div class="space-y-4">
           <div class="rounded-lg border border-zinc-800/60 bg-[#111A2E] p-6">
             <div class="text-sm font-semibold text-zinc-100">输入</div>
-
-            <div class="mt-4 flex flex-wrap items-center gap-2">
-              <button
-                class="rounded-md border px-3 py-1.5 text-xs font-semibold transition"
-                :class="
-                  inputMode === 'idea'
-                    ? 'border-blue-400/70 bg-blue-500/20 text-blue-100'
-                    : 'border-zinc-700/60 bg-zinc-900/30 text-zinc-200 hover:bg-zinc-900/60'
-                "
-                type="button"
-                @click="inputMode = 'idea'"
-              >
-                用 idea
-              </button>
-              <button
-                class="rounded-md border px-3 py-1.5 text-xs font-semibold transition"
-                :class="
-                  inputMode === 'outline'
-                    ? 'border-blue-400/70 bg-blue-500/20 text-blue-100'
-                    : 'border-zinc-700/60 bg-zinc-900/30 text-zinc-200 hover:bg-zinc-900/60'
-                "
-                type="button"
-                @click="inputMode = 'outline'"
-              >
-                用 outline
-              </button>
-            </div>
-
-            <div class="mt-4">
-              <div class="text-xs font-semibold text-zinc-200">大纲/方向</div>
-              <div v-if="novelError" class="mt-2 text-[11px] text-red-200/80">{{ novelError }}</div>
-              <div v-else class="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-zinc-400">
-                <span
-                  class="rounded border px-2 py-0.5"
-                  :class="outlineDirty ? 'border-amber-500/40 bg-amber-500/10 text-amber-200' : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'"
-                >
-                  {{ outlineDirty ? '未保存' : '已保存' }}
-                </span>
-                <span class="rounded bg-zinc-900/50 px-2 py-0.5">提示：生成后可再选择是否保存到章节</span>
-              </div>
-              <div class="mt-3 flex flex-wrap items-center gap-2">
-                <button
-                  class="rounded-md bg-blue-500 px-3 py-2 text-xs font-semibold text-white transition hover:bg-blue-400 disabled:cursor-not-allowed disabled:opacity-60"
-                  :disabled="isOutlineSaving || !outlineDirty"
-                  type="button"
-                  @click="saveOutline"
-                >
-                  {{ isOutlineSaving ? '保存中...' : '保存大纲' }}
-                </button>
-                <button
-                  class="rounded-md border border-zinc-700/60 bg-zinc-900/30 px-3 py-2 text-xs font-semibold text-zinc-100 transition hover:bg-zinc-900/60 disabled:cursor-not-allowed disabled:opacity-60"
-                  :disabled="novelLoading"
-                  type="button"
-                  @click="loadNovel"
-                >
-                  {{ novelLoading ? '加载中...' : '重新加载' }}
-                </button>
-                <div v-if="outlineSaveMessage" class="text-[11px] text-zinc-300">{{ outlineSaveMessage }}</div>
-              </div>
-            </div>
 
             <div class="mt-4 grid gap-4 md:grid-cols-2">
               <div>
@@ -437,44 +486,6 @@ onMounted(() => {
                   返回列表
                 </router-link>
               </div>
-            </div>
-
-            <div v-if="inputMode === 'idea'" class="mt-4">
-              <div class="text-xs font-semibold text-zinc-200">Idea</div>
-              <textarea
-                v-model="idea"
-                class="mt-2 min-h-28 w-full resize-y rounded-md border border-zinc-700/60 bg-zinc-900/30 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-blue-400/70"
-                placeholder="一句话或一段话描述故事核心设定"
-              />
-              <div class="mt-3 flex items-center gap-2">
-                <span class="text-xs text-zinc-400">大纲生成范围：</span>
-                <div class="flex items-center gap-1 text-xs">
-                  <span class="text-zinc-400">第</span>
-                  <input
-                    type="number"
-                    v-model.number="outlineStart"
-                    class="w-14 rounded border border-zinc-700/60 bg-zinc-900/30 px-1 py-1 text-center text-zinc-100 outline-none focus:border-blue-400/70"
-                    min="1"
-                  />
-                  <span class="text-zinc-400">到</span>
-                  <input
-                    type="number"
-                    v-model.number="outlineEnd"
-                    class="w-14 rounded border border-zinc-700/60 bg-zinc-900/30 px-1 py-1 text-center text-zinc-100 outline-none focus:border-blue-400/70"
-                    min="1"
-                  />
-                  <span class="text-zinc-400">章</span>
-                </div>
-              </div>
-            </div>
-
-            <div v-else class="mt-4">
-              <div class="text-xs font-semibold text-zinc-200">Outline</div>
-              <textarea
-                v-model="outline"
-                class="mt-2 min-h-28 w-full resize-y rounded-md border border-zinc-700/60 bg-zinc-900/30 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-blue-400/70"
-                placeholder="输入大纲（可多段）"
-              />
             </div>
 
             <div class="mt-4">
