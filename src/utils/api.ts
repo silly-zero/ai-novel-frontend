@@ -242,6 +242,9 @@ export function previewContext(params: PreviewContextParams, signal?: AbortSigna
     chapter_index: params.chapter_index,
     outline: params.outline,
     idea: params.idea,
+    existing_outline: params.existing_outline,
+    outline_start: params.outline_start,
+    outline_end: params.outline_end,
     editor_notes: params.editor_notes,
     manual_context: params.manual_context,
   })
@@ -256,6 +259,9 @@ export function buildGenerateChapterUrl(params: PreviewContextParams) {
     chapter_index: params.chapter_index,
     outline: params.outline,
     idea: params.idea,
+    existing_outline: params.existing_outline,
+    outline_start: params.outline_start,
+    outline_end: params.outline_end,
     editor_notes: params.editor_notes,
     manual_context: params.manual_context,
   })
