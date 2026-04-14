@@ -2,17 +2,8 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import TopNav from '@/components/TopNav.vue'
-import {
-  buildGenerateChapterUrl,
-  createChapter,
-  getNovel,
-  listChapters,
-  previewContext,
-  updateChapter,
-  updateNovel,
-  type ChapterItem,
-  type PreviewContextResponse,
-} from '@/utils/api'
+import { buildGenerateChapterUrl, createChapter, getNovel, listChapters, previewContext, updateChapter, updateNovel } from '@/utils/api'
+import type { ChapterItem, PreviewContextResponse, PreviewContextParams } from '@/utils/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -20,6 +11,8 @@ const novelId = computed(() => String(route.params.novelId ?? ''))
 
 const inputMode = ref<'idea' | 'outline'>('idea')
 const chapterIndex = ref(1)
+const outlineStart = ref(1)
+const outlineEnd = ref(10)
 const idea = ref('')
 const outline = ref('')
 const editorNotes = ref('')
@@ -59,17 +52,44 @@ const hasGenerated = ref(false)
 const previewAbort = new AbortController()
 const esRef = ref<EventSource | null>(null)
 
-function buildParams() {
-  const base = {
+function buildParams(): PreviewContextParams {
+  const base: PreviewContextParams = {
     novel_id: novelId.value,
     chapter_index: Math.max(1, Number(chapterIndex.value || 1)),
     editor_notes: editorNotes.value.trim() || undefined,
     manual_context: manualContext.value.trim() || undefined,
     persist: 0 as const,
-    idea: idea.value.trim() || undefined,
-    outline: outline.value.trim() || undefined,
+  }
+  if (inputMode.value === 'idea') {
+    base.idea = idea.value.trim() || undefined
+    if (outline.value.trim()) {
+      base.existing_outline = outline.value.trim() || undefined
+    }
+    base.outline_start = outlineStart.value
+    base.outline_end = outlineEnd.value
+  } else {
+    base.outline = outline.value.trim() || undefined
   }
   return base
+}
+
+async function savePreviewOutline() {
+  if (!preview.value?.full_outline) return
+  isOutlineSaving.value = true
+  outlineSaveMessage.value = null
+  try {
+    await updateNovel(novelId.value, { outline: preview.value.full_outline })
+    outline.value = preview.value.full_outline
+    lastSavedOutline.value = preview.value.full_outline
+    outlineSaveMessage.value = '大纲已从预览同步保存'
+    setTimeout(() => {
+      outlineSaveMessage.value = null
+    }, 3000)
+  } catch (err: unknown) {
+    outlineSaveMessage.value = (err as Error).message || '保存大纲失败'
+  } finally {
+    isOutlineSaving.value = false
+  }
 }
 
 async function onPreview() {
@@ -426,6 +446,26 @@ onMounted(() => {
                 class="mt-2 min-h-28 w-full resize-y rounded-md border border-zinc-700/60 bg-zinc-900/30 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-blue-400/70"
                 placeholder="一句话或一段话描述故事核心设定"
               />
+              <div class="mt-3 flex items-center gap-2">
+                <span class="text-xs text-zinc-400">大纲生成范围：</span>
+                <div class="flex items-center gap-1 text-xs">
+                  <span class="text-zinc-400">第</span>
+                  <input
+                    type="number"
+                    v-model.number="outlineStart"
+                    class="w-14 rounded border border-zinc-700/60 bg-zinc-900/30 px-1 py-1 text-center text-zinc-100 outline-none focus:border-blue-400/70"
+                    min="1"
+                  />
+                  <span class="text-zinc-400">到</span>
+                  <input
+                    type="number"
+                    v-model.number="outlineEnd"
+                    class="w-14 rounded border border-zinc-700/60 bg-zinc-900/30 px-1 py-1 text-center text-zinc-100 outline-none focus:border-blue-400/70"
+                    min="1"
+                  />
+                  <span class="text-zinc-400">章</span>
+                </div>
+              </div>
             </div>
 
             <div v-else class="mt-4">
@@ -628,10 +668,20 @@ onMounted(() => {
               <div>
                 <div class="text-xs font-semibold text-zinc-200">Full Outline</div>
                 <textarea
-                  :value="preview.full_outline"
+                  v-model="preview.full_outline"
                   class="mt-2 min-h-32 w-full resize-y rounded-md border border-zinc-700/60 bg-zinc-900/30 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-blue-400/70"
-                  readonly
                 />
+                <div class="mt-2 flex items-center gap-2">
+                  <button
+                    class="rounded-md border border-blue-400/70 bg-blue-500/20 px-3 py-1.5 text-[11px] font-semibold text-blue-100 transition hover:bg-blue-500/30 disabled:cursor-not-allowed disabled:opacity-60"
+                    :disabled="isOutlineSaving"
+                    type="button"
+                    @click="savePreviewOutline"
+                  >
+                    {{ isOutlineSaving ? '保存中...' : '将此大纲保存到小说' }}
+                  </button>
+                  <span v-if="outlineSaveMessage" class="text-[11px] text-emerald-400/90">{{ outlineSaveMessage }}</span>
+                </div>
               </div>
 
               <div>

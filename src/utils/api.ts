@@ -58,6 +58,9 @@ export type PreviewContextParams = {
   chapter_index?: number
   outline?: string
   idea?: string
+  existing_outline?: string
+  outline_start?: number
+  outline_end?: number
   editor_notes?: string
   manual_context?: string
 }
