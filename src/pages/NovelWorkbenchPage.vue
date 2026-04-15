@@ -16,6 +16,7 @@ const idea = ref('')
 const outline = ref('')
 const editorNotes = ref('')
 const manualContext = ref('')
+const pacingPreset = ref<'normal' | 'slow-burn' | 'cliffhanger'>('slow-burn')
 
 const preview = ref<PreviewContextResponse | null>(null)
 const previewLoading = ref(false)
@@ -52,10 +53,18 @@ const previewAbort = new AbortController()
 const esRef = ref<EventSource | null>(null)
 
 function buildChapterParams(): PreviewContextParams {
+  const pacingHint =
+    pacingPreset.value === 'slow-burn'
+      ? '分章节奏要求：本章只推进一个阶段，不要在本章彻底解决核心事件，结尾保留明确悬念。'
+      : pacingPreset.value === 'cliffhanger'
+        ? '分章节奏要求：本章以强悬念结尾，核心冲突延续到下一章。'
+        : ''
+  const mergedEditorNotes = [pacingHint, editorNotes.value.trim()].filter(Boolean).join('\n')
+
   const base: PreviewContextParams = {
     novel_id: novelId.value,
     chapter_index: Math.max(1, Number(chapterIndex.value || 1)),
-    editor_notes: editorNotes.value.trim() || undefined,
+    editor_notes: mergedEditorNotes || undefined,
     manual_context: manualContext.value.trim() || undefined,
     persist: 0 as const,
   }
@@ -500,6 +509,48 @@ onMounted(() => {
                 >
                   返回列表
                 </router-link>
+              </div>
+            </div>
+
+            <div class="mt-4">
+              <div class="text-xs font-semibold text-zinc-200">本章推进节奏</div>
+              <div class="mt-2 flex flex-wrap gap-2">
+                <button
+                  class="rounded-md border px-3 py-1.5 text-xs font-semibold transition"
+                  :class="
+                    pacingPreset === 'slow-burn'
+                      ? 'border-blue-400/70 bg-blue-500/20 text-blue-100'
+                      : 'border-zinc-700/60 bg-zinc-900/30 text-zinc-200 hover:bg-zinc-900/60'
+                  "
+                  type="button"
+                  @click="pacingPreset = 'slow-burn'"
+                >
+                  慢推进（推荐）
+                </button>
+                <button
+                  class="rounded-md border px-3 py-1.5 text-xs font-semibold transition"
+                  :class="
+                    pacingPreset === 'cliffhanger'
+                      ? 'border-blue-400/70 bg-blue-500/20 text-blue-100'
+                      : 'border-zinc-700/60 bg-zinc-900/30 text-zinc-200 hover:bg-zinc-900/60'
+                  "
+                  type="button"
+                  @click="pacingPreset = 'cliffhanger'"
+                >
+                  强悬念结尾
+                </button>
+                <button
+                  class="rounded-md border px-3 py-1.5 text-xs font-semibold transition"
+                  :class="
+                    pacingPreset === 'normal'
+                      ? 'border-blue-400/70 bg-blue-500/20 text-blue-100'
+                      : 'border-zinc-700/60 bg-zinc-900/30 text-zinc-200 hover:bg-zinc-900/60'
+                  "
+                  type="button"
+                  @click="pacingPreset = 'normal'"
+                >
+                  普通
+                </button>
               </div>
             </div>
 
