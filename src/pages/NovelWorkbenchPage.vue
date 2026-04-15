@@ -60,9 +60,6 @@ function buildChapterParams(): PreviewContextParams {
     persist: 0 as const,
   }
   base.idea = idea.value.trim() || undefined
-  if (outline.value.trim()) {
-    base.existing_outline = outline.value.trim() || undefined
-  }
   return base
 }
 
@@ -71,7 +68,6 @@ function buildOutlineParams(): PreviewContextParams {
     novel_id: novelId.value,
     chapter_index: 1,
     idea: idea.value.trim() || undefined,
-    existing_outline: outline.value.trim() || undefined,
     outline_start: Math.max(1, Number(outlineStart.value || 1)),
     outline_end: Math.max(1, Number(outlineEnd.value || 10)),
   }
@@ -104,7 +100,7 @@ async function onPreview() {
   try {
     const params = buildChapterParams()
     if (!params.novel_id) throw new Error('novel_id 缺失')
-    if (!params.idea && !params.existing_outline) throw new Error('需要填写 idea 或全书大纲')
+    if (!idea.value.trim() && !outline.value.trim()) throw new Error('需要先填写 Idea 或保存全书大纲')
     preview.value = await previewContext(params, previewAbort.signal)
   } catch (err) {
     previewError.value = err instanceof Error ? err.message : '预览失败'
@@ -117,9 +113,12 @@ async function onExtendOutline() {
   previewLoading.value = true
   previewError.value = null
   try {
+    if (outlineDirty.value) {
+      await saveOutline()
+    }
     const params = buildOutlineParams()
     if (!params.novel_id) throw new Error('novel_id 缺失')
-    if (!params.idea) throw new Error('需要先填写 Idea 才能生成/续写大纲')
+    if (!idea.value.trim() && !lastSavedIdea.value.trim()) throw new Error('需要先填写 Idea 才能生成/续写大纲')
     if (!params.outline_start || !params.outline_end) throw new Error('请填写大纲生成范围')
     if (params.outline_end < params.outline_start) throw new Error('结束章节不能小于起始章节')
     const res = await previewContext(params, previewAbort.signal)
@@ -302,8 +301,8 @@ function onGenerate() {
     generateError.value = 'novel_id 缺失'
     return
   }
-  if (!params.idea && !params.existing_outline) {
-    generateError.value = '需要填写 idea 或全书大纲'
+  if (!idea.value.trim() && !outline.value.trim()) {
+    generateError.value = '需要先填写 Idea 或保存全书大纲'
     return
   }
 
