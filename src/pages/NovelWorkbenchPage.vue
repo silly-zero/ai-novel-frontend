@@ -328,6 +328,22 @@ function onGenerate() {
     }
   })
 
+  es.addEventListener('retry', (e) => {
+    try {
+      const parsed = JSON.parse(String((e as MessageEvent).data ?? '{}')) as { retry_count?: number; critique?: string }
+      const idx = parsed.retry_count ?? 1
+      generateStatus.value = `审查未通过，开始第 ${idx} 次重写`
+      // 每次重写都清空显示，避免把多轮草稿拼在一起看起来像“循环重复”
+      output.value = ''
+      if (parsed.critique) {
+        generateError.value = `重写原因：${parsed.critique}`
+      }
+    } catch {
+      generateStatus.value = '审查未通过，开始重写'
+      output.value = ''
+    }
+  })
+
   es.addEventListener('end', () => {
     generateStatus.value = '生成完成'
     stopGenerate()
