@@ -267,3 +267,88 @@ export function buildGenerateChapterUrl(params: PreviewContextParams) {
   })
   return withBaseUrl(path)
 }
+
+export type GenerateStreamEvent = {
+  event: string
+  data: string
+}
+
+export async function streamGenerateChapter(
+  params: PreviewContextParams,
+  signal: AbortSignal,
+  onEvent: (event: GenerateStreamEvent) => void,
+) {
+  const res = await fetch(buildGenerateChapterUrl(params), {
+    method: 'GET',
+    headers: {
+      Accept: 'text/event-stream',
+    },
+    signal,
+  })
+  if (!res.ok) {
+    const body = (await res.text().catch(() => '')).trim()
+    const message = body ? `${res.status} ${res.statusText}: ${body}` : `${res.status} ${res.statusText}`
+    throw new Error(message)
+  }
+  if (!res.body) {
+    throw new Error('生成响应不支持流式读取')
+  }
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let eventName = 'message'
+  let dataLines: string[] = []
+  let sawEnd = false
+
+  const dispatch = () => {
+    if (dataLines.length === 0) {
+      eventName = 'message'
+      return
+    }
+    const event = { event: eventName, data: dataLines.join('\n') }
+    eventName = 'message'
+    dataLines = []
+    if (event.event === 'error') {
+      throw new Error(event.data || '生成失败')
+    }
+    if (event.event === 'end') sawEnd = true
+    onEvent(event)
+  }
+
+  const processLine = (line: string) => {
+    if (line === '') {
+      dispatch()
+      return
+    }
+    if (line.startsWith(':')) return
+    const separator = line.indexOf(':')
+    const field = separator === -1 ? line : line.slice(0, separator)
+    let value = separator === -1 ? '' : line.slice(separator + 1)
+    if (value.startsWith(' ')) value = value.slice(1)
+    if (field === 'event') eventName = value || 'message'
+    if (field === 'data') dataLines.push(value)
+  }
+
+  let streamDone = false
+  try {
+    while (!streamDone) {
+      const { done, value } = await reader.read()
+      streamDone = done
+      buffer += decoder.decode(value, { stream: !done })
+      const lines = buffer.split(/\r?\n/)
+      buffer = lines.pop() ?? ''
+      for (const line of lines) processLine(line)
+    }
+    if (buffer !== '') processLine(buffer)
+    dispatch()
+    if (!sawEnd) {
+      throw new Error('生成连接提前结束')
+    }
+  } catch (err) {
+    await reader.cancel().catch(() => undefined)
+    throw err
+  } finally {
+    reader.releaseLock()
+  }
+}

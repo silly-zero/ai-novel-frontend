@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import TopNav from '@/components/TopNav.vue'
-import { buildGenerateChapterUrl, createChapter, getNovel, listChapters, previewContext, updateChapter, updateNovel } from '@/utils/api'
+import { createChapter, getNovel, listChapters, previewContext, streamGenerateChapter, updateChapter, updateNovel } from '@/utils/api'
 import type { ChapterItem, PreviewContextResponse, PreviewContextParams } from '@/utils/api'
 
 const route = useRoute()
@@ -50,7 +50,7 @@ const savedChapterId = ref<string | null>(null)
 const hasGenerated = ref(false)
 
 const previewAbort = new AbortController()
-const esRef = ref<EventSource | null>(null)
+const generateAbort = ref<AbortController | null>(null)
 
 function buildChapterParams(): PreviewContextParams {
   const pacingHint =
@@ -142,10 +142,8 @@ async function onExtendOutline() {
 }
 
 function stopGenerate() {
-  if (esRef.value) {
-    esRef.value.close()
-    esRef.value = null
-  }
+  generateAbort.value?.abort()
+  generateAbort.value = null
   isGenerating.value = false
 }
 
@@ -300,7 +298,7 @@ function goEditSavedChapter() {
 }
 
 
-function onGenerate() {
+async function onGenerate() {
   generateError.value = null
   generateStatus.value = null
   meta.value = null
@@ -321,57 +319,61 @@ function onGenerate() {
   hasGenerated.value = false
   savePanelOpen.value = false
 
-  const es = new EventSource(buildGenerateChapterUrl(params))
-  esRef.value = es
+  const controller = new AbortController()
+  generateAbort.value = controller
 
-  es.addEventListener('start', (e) => {
-    const data = e instanceof MessageEvent ? String(e.data ?? '') : ''
-    generateStatus.value = data || '已开始生成'
-  })
-
-  es.addEventListener('context_meta', (e) => {
-    try {
-      meta.value = JSON.parse(String((e as MessageEvent).data ?? '{}')) as Record<string, unknown>
-    } catch {
-      meta.value = null
-    }
-  })
-
-  es.addEventListener('retry', (e) => {
-    try {
-      const parsed = JSON.parse(String((e as MessageEvent).data ?? '{}')) as { retry_count?: number; critique?: string }
-      const idx = parsed.retry_count ?? 1
-      generateStatus.value = `审查未通过，开始第 ${idx} 次重写`
-      // 每次重写都清空显示，避免把多轮草稿拼在一起看起来像“循环重复”
-      output.value = ''
-      if (parsed.critique) {
-        generateError.value = `重写原因：${parsed.critique}`
+  try {
+    await streamGenerateChapter(params, controller.signal, ({ event, data }) => {
+      if (event === 'start') {
+        generateStatus.value = data || '已开始生成'
+        return
       }
-    } catch {
-      generateStatus.value = '审查未通过，开始重写'
-      output.value = ''
+      if (event === 'context_meta') {
+        try {
+          meta.value = JSON.parse(data || '{}') as Record<string, unknown>
+        } catch {
+          meta.value = null
+        }
+        return
+      }
+      if (event === 'retry') {
+        try {
+          const parsed = JSON.parse(data || '{}') as { retry_count?: number; critique?: string }
+          const idx = parsed.retry_count ?? 1
+          generateStatus.value = `审查未通过，开始第 ${idx} 次重写`
+          output.value = ''
+          if (parsed.critique) {
+            generateError.value = `重写原因：${parsed.critique}`
+          }
+        } catch {
+          generateStatus.value = '审查未通过，开始重写'
+          output.value = ''
+        }
+        return
+      }
+      if (event === 'end') {
+        generateStatus.value = '生成完成'
+        hasGenerated.value = true
+        savePanelOpen.value = true
+        return
+      }
+      if (event === 'message') {
+        try {
+          const parsed = JSON.parse(data || '{}') as { token?: string }
+          if (parsed.token) output.value += parsed.token
+        } catch {
+          return
+        }
+      }
+    })
+  } catch (err) {
+    if (!(err instanceof DOMException && err.name === 'AbortError')) {
+      generateError.value = err instanceof Error ? err.message : '生成失败'
     }
-  })
-
-  es.addEventListener('end', () => {
-    generateStatus.value = '生成完成'
-    stopGenerate()
-    hasGenerated.value = true
-    savePanelOpen.value = true
-  })
-
-  es.addEventListener('error', (e) => {
-    const data = e instanceof MessageEvent ? String(e.data ?? '') : ''
-    generateError.value = data || '生成失败'
-    stopGenerate()
-  })
-
-  es.onmessage = (e) => {
-    try {
-      const parsed = JSON.parse(String(e.data ?? '{}')) as { token?: string }
-      if (parsed.token) output.value += parsed.token
-    } catch {
-      return
+  } finally {
+    if (generateAbort.value === controller) {
+      generateAbort.value = null
+      isGenerating.value = false
     }
   }
 }
