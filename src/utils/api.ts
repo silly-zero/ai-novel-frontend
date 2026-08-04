@@ -269,15 +269,35 @@ export function buildGenerateChapterUrl(params: PreviewContextParams) {
 }
 
 export type GenerateStreamEvent = {
-  event: string
+  event: 'start' | 'context_meta' | 'token' | 'retry'
   data: string
+}
+
+export type GenerationTerminal = {
+  generation_id: string
+  status: 'success' | 'error' | 'cancelled'
+  message?: string
+}
+
+export type CancelGenerationResponse = {
+  generation_id: string
+  status: 'cancelling'
+}
+
+export function cancelGeneration(novelId: string, generationId: string, signal?: AbortSignal) {
+  return apiJson<CancelGenerationResponse>(
+    'POST',
+    `/api/v1/novels/${encodeURIComponent(novelId)}/generate/cancel`,
+    { generation_id: generationId },
+    signal,
+  )
 }
 
 export async function streamGenerateChapter(
   params: PreviewContextParams,
   signal: AbortSignal,
   onEvent: (event: GenerateStreamEvent) => void,
-) {
+): Promise<GenerationTerminal> {
   const res = await fetch(buildGenerateChapterUrl(params), {
     method: 'GET',
     headers: {
@@ -299,7 +319,8 @@ export async function streamGenerateChapter(
   let buffer = ''
   let eventName = 'message'
   let dataLines: string[] = []
-  let sawEnd = false
+  let startedGenerationId: string | null = null
+  let terminal: GenerationTerminal | null = null
 
   const dispatch = () => {
     if (dataLines.length === 0) {
@@ -309,11 +330,39 @@ export async function streamGenerateChapter(
     const event = { event: eventName, data: dataLines.join('\n') }
     eventName = 'message'
     dataLines = []
-    if (event.event === 'error') {
-      throw new Error(event.data || '生成失败')
+    if (terminal) {
+      throw new Error('生成终态后收到额外事件')
     }
-    if (event.event === 'end') sawEnd = true
-    onEvent(event)
+    if (event.event === 'terminal') {
+      const parsed = JSON.parse(event.data || '{}') as Partial<GenerationTerminal>
+      if (
+        typeof parsed.generation_id !== 'string' ||
+        !['success', 'error', 'cancelled'].includes(parsed.status ?? '')
+      ) {
+        throw new Error('生成终态格式无效')
+      }
+      if (!startedGenerationId || parsed.generation_id !== startedGenerationId) {
+        throw new Error('生成终态与当前任务不匹配')
+      }
+      terminal = parsed as GenerationTerminal
+      return
+    }
+    if (!['start', 'context_meta', 'token', 'retry'].includes(event.event)) {
+      throw new Error(`未知生成事件：${event.event}`)
+    }
+    if (event.event === 'start') {
+      const parsed = JSON.parse(event.data || '{}') as { generation_id?: unknown }
+      if (typeof parsed.generation_id !== 'string' || !parsed.generation_id) {
+        throw new Error('生成开始事件格式无效')
+      }
+      if (startedGenerationId) {
+        throw new Error('重复的生成开始事件')
+      }
+      startedGenerationId = parsed.generation_id
+    } else if (!startedGenerationId) {
+      throw new Error('生成开始前收到过程事件')
+    }
+    onEvent(event as GenerateStreamEvent)
   }
 
   const processLine = (line: string) => {
@@ -342,9 +391,10 @@ export async function streamGenerateChapter(
     }
     if (buffer !== '') processLine(buffer)
     dispatch()
-    if (!sawEnd) {
+    if (!terminal) {
       throw new Error('生成连接提前结束')
     }
+    return terminal
   } catch (err) {
     await reader.cancel().catch(() => undefined)
     throw err

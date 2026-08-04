@@ -2,7 +2,16 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import TopNav from '@/components/TopNav.vue'
-import { createChapter, getNovel, listChapters, previewContext, streamGenerateChapter, updateChapter, updateNovel } from '@/utils/api'
+import {
+  cancelGeneration,
+  createChapter,
+  getNovel,
+  listChapters,
+  previewContext,
+  streamGenerateChapter,
+  updateChapter,
+  updateNovel,
+} from '@/utils/api'
 import type { ChapterItem, PreviewContextResponse, PreviewContextParams } from '@/utils/api'
 
 const route = useRoute()
@@ -25,7 +34,11 @@ const previewError = ref<string | null>(null)
 const meta = ref<Record<string, unknown> | null>(null)
 const metaText = computed(() => (meta.value ? JSON.stringify(meta.value, null, 2) : ''))
 const output = ref('')
-const isGenerating = ref(false)
+type GenerationUIState = 'idle' | 'running' | 'cancelling' | 'success' | 'error' | 'cancelled'
+const generationState = ref<GenerationUIState>('idle')
+const isGenerationActive = computed(
+  () => generationState.value === 'running' || generationState.value === 'cancelling',
+)
 const generateError = ref<string | null>(null)
 const generateStatus = ref<string | null>(null)
 
@@ -51,6 +64,10 @@ const hasGenerated = ref(false)
 
 const previewAbort = new AbortController()
 const generateAbort = ref<AbortController | null>(null)
+const generationId = ref<string | null>(null)
+const generationNovelId = ref<string | null>(null)
+const cancelRequested = ref(false)
+const cancelInFlight = ref(false)
 
 function buildChapterParams(): PreviewContextParams {
   const pacingHint =
@@ -141,10 +158,46 @@ async function onExtendOutline() {
   }
 }
 
+async function requestGenerationCancel(controller: AbortController) {
+  if (
+    generateAbort.value !== controller ||
+    !cancelRequested.value ||
+    !generationId.value ||
+    !generationNovelId.value ||
+    cancelInFlight.value
+  ) {
+    return
+  }
+
+  cancelInFlight.value = true
+  try {
+    await cancelGeneration(generationNovelId.value, generationId.value)
+  } catch (err) {
+    if (generateAbort.value !== controller || generationState.value !== 'cancelling') return
+    generationState.value = 'running'
+    cancelRequested.value = false
+    generateStatus.value = '生成中'
+    generateError.value = err instanceof Error ? err.message : '取消生成失败'
+  } finally {
+    if (generateAbort.value === controller) {
+      cancelInFlight.value = false
+    }
+  }
+}
+
 function stopGenerate() {
+  const controller = generateAbort.value
+  if (!controller || generationState.value !== 'running') return
+  generationState.value = 'cancelling'
+  cancelRequested.value = true
+  generateStatus.value = '正在取消'
+  generateError.value = null
+  void requestGenerationCancel(controller)
+}
+
+function abortGenerationTransport() {
   generateAbort.value?.abort()
   generateAbort.value = null
-  isGenerating.value = false
 }
 
 function clearOutput() {
@@ -299,6 +352,7 @@ function goEditSavedChapter() {
 
 
 async function onGenerate() {
+  if (isGenerationActive.value) return
   generateError.value = null
   generateStatus.value = null
   meta.value = null
@@ -313,9 +367,13 @@ async function onGenerate() {
     return
   }
 
-  stopGenerate()
+  abortGenerationTransport()
   output.value = ''
-  isGenerating.value = true
+  generationState.value = 'running'
+  generationId.value = null
+  generationNovelId.value = params.novel_id
+  cancelRequested.value = false
+  cancelInFlight.value = false
   hasGenerated.value = false
   savePanelOpen.value = false
 
@@ -323,64 +381,74 @@ async function onGenerate() {
   generateAbort.value = controller
 
   try {
-    await streamGenerateChapter(params, controller.signal, ({ event, data }) => {
+    const terminal = await streamGenerateChapter(params, controller.signal, ({ event, data }) => {
+      if (generateAbort.value !== controller) return
       if (event === 'start') {
-        generateStatus.value = data || '已开始生成'
+        const parsed = JSON.parse(data || '{}') as { generation_id?: string; message?: string }
+        if (!parsed.generation_id) throw new Error('生成开始事件缺少 generation_id')
+        generationId.value = parsed.generation_id
+        generateStatus.value = cancelRequested.value ? '正在取消' : parsed.message || '已开始生成'
+        void requestGenerationCancel(controller)
         return
       }
       if (event === 'context_meta') {
-        try {
-          meta.value = JSON.parse(data || '{}') as Record<string, unknown>
-        } catch {
-          meta.value = null
-        }
+        meta.value = JSON.parse(data || '{}') as Record<string, unknown>
         return
       }
       if (event === 'retry') {
-        try {
-          const parsed = JSON.parse(data || '{}') as { retry_count?: number; critique?: string }
+        const parsed = JSON.parse(data || '{}') as { retry_count?: number; critique?: string }
+        output.value = ''
+        if (generationState.value !== 'cancelling') {
           const idx = parsed.retry_count ?? 1
           generateStatus.value = `审查未通过，开始第 ${idx} 次重写`
-          output.value = ''
-          if (parsed.critique) {
-            generateError.value = `重写原因：${parsed.critique}`
-          }
-        } catch {
-          generateStatus.value = '审查未通过，开始重写'
-          output.value = ''
+          generateError.value = parsed.critique ? `重写原因：${parsed.critique}` : null
         }
         return
       }
-      if (event === 'end') {
-        generateStatus.value = '生成完成'
-        hasGenerated.value = true
-        savePanelOpen.value = true
-        return
-      }
-      if (event === 'message') {
-        try {
-          const parsed = JSON.parse(data || '{}') as { token?: string }
-          if (parsed.token) output.value += parsed.token
-        } catch {
-          return
+      if (event === 'token') {
+        const parsed = JSON.parse(data || '{}') as { token?: unknown }
+        if (typeof parsed.token !== 'string') {
+          throw new Error('正文 Token 格式无效')
         }
+        output.value += parsed.token
       }
     })
-  } catch (err) {
-    if (!(err instanceof DOMException && err.name === 'AbortError')) {
-      generateError.value = err instanceof Error ? err.message : '生成失败'
+
+    if (generateAbort.value !== controller) return
+    generationState.value = terminal.status
+    generateStatus.value =
+      terminal.status === 'success'
+        ? '生成完成'
+        : terminal.status === 'cancelled'
+          ? '生成已取消'
+          : '生成失败'
+    generateError.value = terminal.status === 'error' ? terminal.message || '生成失败' : null
+    if (terminal.status === 'success') {
+      hasGenerated.value = true
+      savePanelOpen.value = true
     }
+  } catch (err) {
+    if (generateAbort.value !== controller) return
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      return
+    }
+    generationState.value = 'error'
+    generateStatus.value = '生成连接异常'
+    generateError.value = err instanceof Error ? err.message : '生成失败'
   } finally {
     if (generateAbort.value === controller) {
       generateAbort.value = null
-      isGenerating.value = false
+      generationId.value = null
+      generationNovelId.value = null
+      cancelRequested.value = false
+      cancelInFlight.value = false
     }
   }
 }
 
 onUnmounted(() => {
   previewAbort.abort()
-  stopGenerate()
+  abortGenerationTransport()
 })
 
 onMounted(() => {
@@ -589,24 +657,25 @@ onMounted(() => {
 
               <button
                 class="inline-flex items-center justify-center rounded-md bg-blue-500 px-4 py-2 text-xs font-semibold text-white transition hover:bg-blue-400 disabled:cursor-not-allowed disabled:opacity-60"
-                :disabled="isGenerating"
+                :disabled="isGenerationActive"
                 type="button"
                 @click="onGenerate"
               >
-                {{ isGenerating ? '生成中...' : '开始生成章节' }}
+                {{ isGenerationActive ? (generationState === 'cancelling' ? '正在取消...' : '生成中...') : '开始生成章节' }}
               </button>
 
               <button
                 class="inline-flex items-center justify-center rounded-md border border-red-500/40 bg-red-500/10 px-4 py-2 text-xs font-semibold text-red-200 transition hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-60"
-                :disabled="!isGenerating"
+                :disabled="generationState !== 'running'"
                 type="button"
                 @click="stopGenerate"
               >
-                停止
+                {{ generationState === 'cancelling' ? '正在取消...' : '停止' }}
               </button>
 
               <button
-                class="inline-flex items-center justify-center rounded-md border border-zinc-700/60 bg-zinc-900/30 px-4 py-2 text-xs font-semibold text-zinc-100 transition hover:bg-zinc-900/60"
+                class="inline-flex items-center justify-center rounded-md border border-zinc-700/60 bg-zinc-900/30 px-4 py-2 text-xs font-semibold text-zinc-100 transition hover:bg-zinc-900/60 disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="isGenerationActive"
                 type="button"
                 @click="clearOutput"
               >
