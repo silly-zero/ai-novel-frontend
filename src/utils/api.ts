@@ -152,6 +152,16 @@ async function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> {
   return (await res.json()) as T
 }
 
+export class APIResponseError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message)
+    this.name = 'APIResponseError'
+  }
+}
+
 async function apiJson<T>(method: 'POST' | 'PUT' | 'PATCH', path: string, body: unknown, signal?: AbortSignal): Promise<T> {
   const res = await fetch(withBaseUrl(path), {
     method,
@@ -165,7 +175,7 @@ async function apiJson<T>(method: 'POST' | 'PUT' | 'PATCH', path: string, body: 
   if (!res.ok) {
     const text = await res.text().catch(() => '')
     const message = text ? `${res.status} ${res.statusText}: ${text}` : `${res.status} ${res.statusText}`
-    throw new Error(message)
+    throw new APIResponseError(message, res.status)
   }
   return (await res.json()) as T
 }
@@ -284,13 +294,26 @@ export type CancelGenerationResponse = {
   status: 'cancelling'
 }
 
-export function cancelGeneration(novelId: string, generationId: string, signal?: AbortSignal) {
-  return apiJson<CancelGenerationResponse>(
-    'POST',
-    `/api/v1/novels/${encodeURIComponent(novelId)}/generate/cancel`,
-    { generation_id: generationId },
-    signal,
-  )
+export async function cancelGeneration(novelId: string, generationId: string, signal?: AbortSignal) {
+  const timeoutController = new AbortController()
+  const forwardAbort = () => timeoutController.abort(signal?.reason)
+  if (signal?.aborted) {
+    forwardAbort()
+  } else {
+    signal?.addEventListener('abort', forwardAbort, { once: true })
+  }
+  const timeout = window.setTimeout(() => timeoutController.abort(new DOMException('取消请求超时', 'TimeoutError')), 5000)
+  try {
+    return await apiJson<CancelGenerationResponse>(
+      'POST',
+      `/api/v1/novels/${encodeURIComponent(novelId)}/generate/cancel`,
+      { generation_id: generationId },
+      timeoutController.signal,
+    )
+  } finally {
+    window.clearTimeout(timeout)
+    signal?.removeEventListener('abort', forwardAbort)
+  }
 }
 
 export async function streamGenerateChapter(

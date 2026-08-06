@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import TopNav from '@/components/TopNav.vue'
 import {
+  APIResponseError,
   cancelGeneration,
   createChapter,
   getNovel,
@@ -120,6 +121,7 @@ async function savePreviewOutline() {
 }
 
 async function onPreview() {
+  if (previewLoading.value) return
   previewLoading.value = true
   previewError.value = null
   preview.value = null
@@ -136,6 +138,7 @@ async function onPreview() {
 }
 
 async function onExtendOutline() {
+  if (previewLoading.value) return
   previewLoading.value = true
   previewError.value = null
   try {
@@ -174,10 +177,14 @@ async function requestGenerationCancel(controller: AbortController) {
     await cancelGeneration(generationNovelId.value, generationId.value)
   } catch (err) {
     if (generateAbort.value !== controller || generationState.value !== 'cancelling') return
-    generationState.value = 'running'
-    cancelRequested.value = false
-    generateStatus.value = '生成中'
-    generateError.value = err instanceof Error ? err.message : '取消生成失败'
+    generateError.value = err instanceof Error ? err.message : '取消请求未确认，请等待生成连接返回终态'
+    if (err instanceof APIResponseError) {
+      generationState.value = 'running'
+      cancelRequested.value = false
+      generateStatus.value = '取消请求被后端拒绝，可重试停止'
+      return
+    }
+    generateStatus.value = '正在取消，等待后端确认'
   } finally {
     if (generateAbort.value === controller) {
       cancelInFlight.value = false
