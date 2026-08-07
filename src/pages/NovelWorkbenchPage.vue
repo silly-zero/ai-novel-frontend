@@ -448,15 +448,23 @@ onMounted(() => {
 
     <div class="mx-auto max-w-6xl px-4 py-6">
       <div class="mb-4">
-        <div class="text-base font-semibold text-zinc-100">创作工作台</div>
-        <div class="mt-1 text-xs text-zinc-400">novel_id: {{ novelId }}</div>
+        <div class="text-base font-semibold text-zinc-100">
+          创作工作台
+        </div>
+        <div class="mt-1 text-xs text-zinc-400">
+          novel_id: {{ novelId }}
+        </div>
       </div>
 
       <div class="mb-4 rounded-lg border border-zinc-800/60 bg-[#111A2E] p-6">
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <div class="text-sm font-semibold text-zinc-100">全书大纲</div>
-            <div class="mt-1 text-xs text-zinc-400">建议先生成/编辑大纲，再生成章节</div>
+            <div class="text-sm font-semibold text-zinc-100">
+              全书大纲
+            </div>
+            <div class="mt-1 text-xs text-zinc-400">
+              建议先生成/编辑大纲，再生成章节
+            </div>
           </div>
           <div class="flex flex-wrap items-center gap-2">
             <span
@@ -484,12 +492,24 @@ onMounted(() => {
           </div>
         </div>
 
-        <div v-if="outlineSaveMessage" class="mt-3 text-[11px] text-zinc-300">{{ outlineSaveMessage }}</div>
-        <div v-if="novelError" class="mt-2 text-[11px] text-red-200/80">{{ novelError }}</div>
+        <div
+          v-if="outlineSaveMessage"
+          class="mt-3 text-[11px] text-zinc-300"
+        >
+          {{ outlineSaveMessage }}
+        </div>
+        <div
+          v-if="novelError"
+          class="mt-2 text-[11px] text-red-200/80"
+        >
+          {{ novelError }}
+        </div>
 
         <div class="mt-4 grid gap-4 lg:grid-cols-2">
           <div>
-            <div class="text-xs font-semibold text-zinc-200">Idea（小说核心设定）</div>
+            <div class="text-xs font-semibold text-zinc-200">
+              Idea（小说核心设定）
+            </div>
             <textarea
               v-model="idea"
               class="mt-2 min-h-28 w-full resize-y rounded-md border border-zinc-700/60 bg-zinc-900/30 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-blue-400/70"
@@ -526,7 +546,9 @@ onMounted(() => {
           </div>
 
           <div>
-            <div class="text-xs font-semibold text-zinc-200">Full Outline（可编辑）</div>
+            <div class="text-xs font-semibold text-zinc-200">
+              Full Outline（可编辑）
+            </div>
             <textarea
               v-model="outline"
               class="mt-2 min-h-64 w-full resize-y rounded-md border border-zinc-700/60 bg-zinc-900/30 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-blue-400/70"
@@ -539,11 +561,15 @@ onMounted(() => {
       <div class="grid gap-4 lg:grid-cols-2">
         <div class="space-y-4">
           <div class="rounded-lg border border-zinc-800/60 bg-[#111A2E] p-6">
-            <div class="text-sm font-semibold text-zinc-100">输入</div>
+            <div class="text-sm font-semibold text-zinc-100">
+              输入
+            </div>
 
             <div class="mt-4 grid gap-4 md:grid-cols-2">
               <div>
-                <div class="text-xs font-semibold text-zinc-200">章节序号</div>
+                <div class="text-xs font-semibold text-zinc-200">
+                  章节序号
+                </div>
                 <input
                   v-model.number="chapterIndex"
                   class="mt-2 w-full rounded-md border border-zinc-700/60 bg-zinc-900/30 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-blue-400/70"
@@ -569,7 +595,9 @@ onMounted(() => {
             </div>
 
             <div class="mt-4">
-              <div class="text-xs font-semibold text-zinc-200">本章推进节奏</div>
+              <div class="text-xs font-semibold text-zinc-200">
+                本章推进节奏
+              </div>
               <div class="mt-2 flex flex-wrap gap-2">
                 <button
                   class="rounded-md border px-3 py-1.5 text-xs font-semibold transition"
@@ -611,7 +639,9 @@ onMounted(() => {
             </div>
 
             <div class="mt-4">
-              <div class="text-xs font-semibold text-zinc-200">编辑备注（可选）</div>
+              <div class="text-xs font-semibold text-zinc-200">
+                编辑备注（可选）
+              </div>
               <textarea
                 v-model="editorNotes"
                 class="mt-2 min-h-20 w-full resize-y rounded-md border border-zinc-700/60 bg-zinc-900/30 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-blue-400/70"
@@ -620,7 +650,9 @@ onMounted(() => {
             </div>
 
             <div class="mt-4">
-              <div class="text-xs font-semibold text-zinc-200">手工上下文（可选）</div>
+              <div class="text-xs font-semibold text-zinc-200">
+                手工上下文（可选）
+              </div>
               <textarea
                 v-model="manualContext"
                 class="mt-2 min-h-20 w-full resize-y rounded-md border border-zinc-700/60 bg-zinc-900/30 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-blue-400/70"
@@ -671,10 +703,20 @@ onMounted(() => {
           </div>
 
           <div class="rounded-lg border border-zinc-800/60 bg-[#111A2E] p-6">
-            <div class="text-sm font-semibold text-zinc-100">生成输出</div>
+            <div class="text-sm font-semibold text-zinc-100">
+              生成输出
+            </div>
 
-            <div v-if="generateStatus" class="mt-2 text-xs text-zinc-400">{{ generateStatus }}</div>
-            <div v-if="generateError" class="mt-3 rounded-md border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200">
+            <div
+              v-if="generateStatus"
+              class="mt-2 text-xs text-zinc-400"
+            >
+              {{ generateStatus }}
+            </div>
+            <div
+              v-if="generateError"
+              class="mt-3 rounded-md border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200"
+            >
               {{ generateError }}
             </div>
 
@@ -684,8 +726,13 @@ onMounted(() => {
               placeholder="这里会实时显示 SSE 输出"
             />
 
-            <div v-if="savePanelOpen" class="mt-4 rounded-md border border-zinc-700/60 bg-zinc-900/20 p-4">
-              <div class="text-xs font-semibold text-zinc-200">保存本次生成到章节</div>
+            <div
+              v-if="savePanelOpen"
+              class="mt-4 rounded-md border border-zinc-700/60 bg-zinc-900/20 p-4"
+            >
+              <div class="text-xs font-semibold text-zinc-200">
+                保存本次生成到章节
+              </div>
               <div class="mt-2 flex flex-wrap items-center gap-2">
                 <button
                   class="rounded-md border px-3 py-1.5 text-xs font-semibold transition"
@@ -728,18 +775,28 @@ onMounted(() => {
                 </button>
               </div>
 
-              <div v-if="saveTargetMode === 'byIndex'" class="mt-2 text-[11px] text-zinc-400">
+              <div
+                v-if="saveTargetMode === 'byIndex'"
+                class="mt-2 text-[11px] text-zinc-400"
+              >
                 保存到当前章节序号对应章节；若不存在会自动创建。
               </div>
 
-              <div v-else-if="saveTargetMode === 'existing'" class="mt-3">
+              <div
+                v-else-if="saveTargetMode === 'existing'"
+                class="mt-3"
+              >
                 <div class="flex flex-wrap items-center gap-2">
                   <select
                     v-model="selectedChapterId"
                     class="w-full rounded-md border border-zinc-700/60 bg-zinc-900/30 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-blue-400/70 md:w-auto"
                     :disabled="saveChaptersLoading"
                   >
-                    <option v-for="c in saveChapters" :key="c.id" :value="c.id">
+                    <option
+                      v-for="c in saveChapters"
+                      :key="c.id"
+                      :value="c.id"
+                    >
                       {{ c.title || `第${c.order}章` }}
                     </option>
                   </select>
@@ -752,12 +809,32 @@ onMounted(() => {
                     {{ saveChaptersLoading ? '加载中...' : '刷新章节' }}
                   </button>
                 </div>
-                <div v-if="saveChaptersError" class="mt-2 text-[11px] text-red-200/80">{{ saveChaptersError }}</div>
-                <div v-else-if="saveChapters.length === 0" class="mt-2 text-[11px] text-zinc-400">当前小说还没有章节。</div>
+                <div
+                  v-if="saveChaptersError"
+                  class="mt-2 text-[11px] text-red-200/80"
+                >
+                  {{ saveChaptersError }}
+                </div>
+                <div
+                  v-else-if="saveChapters.length === 0"
+                  class="mt-2 text-[11px] text-zinc-400"
+                >
+                  当前小说还没有章节。
+                </div>
               </div>
 
-              <div v-if="saveGeneratedError" class="mt-3 text-[11px] text-red-200/80">{{ saveGeneratedError }}</div>
-              <div v-if="saveGeneratedMessage" class="mt-3 text-[11px] text-emerald-200/80">{{ saveGeneratedMessage }}</div>
+              <div
+                v-if="saveGeneratedError"
+                class="mt-3 text-[11px] text-red-200/80"
+              >
+                {{ saveGeneratedError }}
+              </div>
+              <div
+                v-if="saveGeneratedMessage"
+                class="mt-3 text-[11px] text-emerald-200/80"
+              >
+                {{ saveGeneratedMessage }}
+              </div>
 
               <div class="mt-3 flex flex-wrap items-center gap-2">
                 <button
@@ -783,24 +860,44 @@ onMounted(() => {
 
         <div class="space-y-4">
           <div class="rounded-lg border border-zinc-800/60 bg-[#111A2E] p-6">
-            <div class="text-sm font-semibold text-zinc-100">上下文预览</div>
+            <div class="text-sm font-semibold text-zinc-100">
+              上下文预览
+            </div>
 
-            <div v-if="previewError" class="mt-3 rounded-md border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200">
+            <div
+              v-if="previewError"
+              class="mt-3 rounded-md border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200"
+            >
               {{ previewError }}
             </div>
 
-            <div v-else-if="!preview" class="mt-3 text-xs text-zinc-400">点击“预览上下文”生成场景卡与共创上下文。</div>
+            <div
+              v-else-if="!preview"
+              class="mt-3 text-xs text-zinc-400"
+            >
+              点击“预览上下文”生成场景卡与共创上下文。
+            </div>
 
-            <div v-else class="mt-4 space-y-4">
-              <div v-if="meta" class="rounded-md border border-zinc-700/60 bg-zinc-900/20 p-3">
-                <div class="text-xs font-semibold text-zinc-200">生成元信息</div>
+            <div
+              v-else
+              class="mt-4 space-y-4"
+            >
+              <div
+                v-if="meta"
+                class="rounded-md border border-zinc-700/60 bg-zinc-900/20 p-3"
+              >
+                <div class="text-xs font-semibold text-zinc-200">
+                  生成元信息
+                </div>
                 <pre
                   class="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-words text-[11px] text-zinc-300"
                 >{{ metaText }}</pre>
               </div>
 
               <div>
-                <div class="text-xs font-semibold text-zinc-200">Full Outline</div>
+                <div class="text-xs font-semibold text-zinc-200">
+                  Full Outline
+                </div>
                 <textarea
                   v-model="preview.full_outline"
                   class="mt-2 min-h-32 w-full resize-y rounded-md border border-zinc-700/60 bg-zinc-900/30 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-blue-400/70"
@@ -814,12 +911,17 @@ onMounted(() => {
                   >
                     {{ isOutlineSaving ? '保存中...' : '将此大纲保存到小说' }}
                   </button>
-                  <span v-if="outlineSaveMessage" class="text-[11px] text-emerald-400/90">{{ outlineSaveMessage }}</span>
+                  <span
+                    v-if="outlineSaveMessage"
+                    class="text-[11px] text-emerald-400/90"
+                  >{{ outlineSaveMessage }}</span>
                 </div>
               </div>
 
               <div>
-                <div class="text-xs font-semibold text-zinc-200">Scene Card</div>
+                <div class="text-xs font-semibold text-zinc-200">
+                  Scene Card
+                </div>
                 <textarea
                   :value="preview.scene_card"
                   class="mt-2 min-h-40 w-full resize-y rounded-md border border-zinc-700/60 bg-zinc-900/30 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-blue-400/70"
@@ -828,7 +930,9 @@ onMounted(() => {
               </div>
 
               <div>
-                <div class="text-xs font-semibold text-zinc-200">Context</div>
+                <div class="text-xs font-semibold text-zinc-200">
+                  Context
+                </div>
                 <textarea
                   :value="preview.context"
                   class="mt-2 min-h-56 w-full resize-y rounded-md border border-zinc-700/60 bg-zinc-900/30 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-blue-400/70"

@@ -94,9 +94,16 @@ onUnmounted(() => {
     <TopNav title="AI Novel Studio" />
 
     <div class="mx-auto max-w-6xl px-4 py-6">
-      <div v-if="errorMessage" class="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-4">
-        <div class="text-sm font-semibold text-red-200">加载失败</div>
-        <div class="mt-1 break-words text-xs text-red-200/80">{{ errorMessage }}</div>
+      <div
+        v-if="errorMessage"
+        class="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-4"
+      >
+        <div class="text-sm font-semibold text-red-200">
+          加载失败
+        </div>
+        <div class="mt-1 break-words text-xs text-red-200/80">
+          {{ errorMessage }}
+        </div>
         <button
           class="mt-3 rounded-md bg-red-500 px-3 py-2 text-xs font-semibold text-white transition hover:bg-red-400"
           type="button"
@@ -106,19 +113,30 @@ onUnmounted(() => {
         </button>
       </div>
 
-      <div v-if="isLoading" class="rounded-lg border border-zinc-800/60 bg-[#111A2E] p-6">
+      <div
+        v-if="isLoading"
+        class="rounded-lg border border-zinc-800/60 bg-[#111A2E] p-6"
+      >
         <div class="animate-pulse">
           <div class="h-5 w-64 rounded bg-zinc-800/60" />
           <div class="mt-3 h-3 w-80 rounded bg-zinc-800/60" />
         </div>
       </div>
 
-      <div v-else-if="item" class="space-y-4">
+      <div
+        v-else-if="item"
+        class="space-y-4"
+      >
         <div class="rounded-lg border border-zinc-800/60 bg-[#111A2E] p-6">
           <div class="flex flex-wrap items-start justify-between gap-4">
             <div class="min-w-0">
-              <div class="truncate text-base font-semibold text-zinc-100">{{ item.title }}</div>
-              <div v-if="item.description" class="mt-2 text-xs text-zinc-300/90">
+              <div class="truncate text-base font-semibold text-zinc-100">
+                {{ item.title }}
+              </div>
+              <div
+                v-if="item.description"
+                class="mt-2 text-xs text-zinc-300/90"
+              >
                 {{ item.description }}
               </div>
               <div class="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-zinc-400">
@@ -127,7 +145,10 @@ onUnmounted(() => {
                 <span class="rounded bg-zinc-900/50 px-2 py-0.5">章节: {{ chapters.length }}</span>
                 <span class="rounded bg-zinc-900/50 px-2 py-0.5">更新: {{ new Date(item.updated_at).toLocaleString() }}</span>
               </div>
-              <div v-if="item.tags?.length" class="mt-3 flex flex-wrap gap-2">
+              <div
+                v-if="item.tags?.length"
+                class="mt-3 flex flex-wrap gap-2"
+              >
                 <span
                   v-for="t in item.tags"
                   :key="t"
@@ -189,10 +210,16 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <div v-if="createError" class="mt-4 rounded-md border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200">
+          <div
+            v-if="createError"
+            class="mt-4 rounded-md border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200"
+          >
             {{ createError }}
           </div>
-          <div v-if="deleteError" class="mt-4 rounded-md border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200">
+          <div
+            v-if="deleteError"
+            class="mt-4 rounded-md border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200"
+          >
             {{ deleteError }}
           </div>
         </div>
@@ -200,7 +227,9 @@ onUnmounted(() => {
         <div class="grid gap-4 lg:grid-cols-3">
           <div class="rounded-lg border border-zinc-800/60 bg-[#111A2E] p-4 lg:col-span-1">
             <div class="mb-3 flex items-center justify-between gap-3">
-              <div class="text-sm font-semibold text-zinc-100">章节</div>
+              <div class="text-sm font-semibold text-zinc-100">
+                章节
+              </div>
               <button
                 class="rounded-md border border-zinc-700/60 bg-zinc-900/30 px-2 py-1 text-[11px] font-semibold text-zinc-100 transition hover:bg-zinc-900/60"
                 type="button"
@@ -210,9 +239,17 @@ onUnmounted(() => {
               </button>
             </div>
 
-            <div v-if="chapters.length === 0" class="text-xs text-zinc-400">暂无章节</div>
+            <div
+              v-if="chapters.length === 0"
+              class="text-xs text-zinc-400"
+            >
+              暂无章节
+            </div>
 
-            <div v-else class="space-y-2">
+            <div
+              v-else
+              class="space-y-2"
+            >
               <button
                 v-for="c in chapters"
                 :key="c.id"
@@ -227,7 +264,9 @@ onUnmounted(() => {
               >
                 <div class="flex items-center justify-between gap-2">
                   <div class="min-w-0 flex-1">
-                    <div class="truncate font-semibold">{{ c.title || `第${c.order}章` }}</div>
+                    <div class="truncate font-semibold">
+                      {{ c.title || `第${c.order}章` }}
+                    </div>
                     <div class="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-zinc-400">
                       <span>序号: {{ c.order }}</span>
                       <span>{{ c.status }}</span>
@@ -256,13 +295,33 @@ onUnmounted(() => {
 
           <div class="rounded-lg border border-zinc-800/60 bg-[#111A2E] p-6 lg:col-span-2">
             <div v-if="viewMode === 'full'">
-              <div class="text-sm font-semibold text-zinc-100">全书</div>
-              <div class="mt-1 text-xs text-zinc-400">按章节顺序展示整本小说内容</div>
-              <div v-if="chapters.length === 0" class="mt-4 text-xs text-zinc-400">暂无内容</div>
-              <div v-else class="mt-4 space-y-6">
-                <div v-for="c in chapters" :key="c.id" class="space-y-2">
-                  <div class="text-sm font-semibold text-zinc-100">{{ c.title || `第${c.order}章` }}</div>
-                  <div class="text-[11px] text-zinc-400">更新: {{ new Date(c.updated_at).toLocaleString() }}</div>
+              <div class="text-sm font-semibold text-zinc-100">
+                全书
+              </div>
+              <div class="mt-1 text-xs text-zinc-400">
+                按章节顺序展示整本小说内容
+              </div>
+              <div
+                v-if="chapters.length === 0"
+                class="mt-4 text-xs text-zinc-400"
+              >
+                暂无内容
+              </div>
+              <div
+                v-else
+                class="mt-4 space-y-6"
+              >
+                <div
+                  v-for="c in chapters"
+                  :key="c.id"
+                  class="space-y-2"
+                >
+                  <div class="text-sm font-semibold text-zinc-100">
+                    {{ c.title || `第${c.order}章` }}
+                  </div>
+                  <div class="text-[11px] text-zinc-400">
+                    更新: {{ new Date(c.updated_at).toLocaleString() }}
+                  </div>
                   <div class="rounded-md border border-zinc-800/60 bg-zinc-900/20 p-4">
                     <pre class="whitespace-pre-wrap break-words text-sm leading-6 text-zinc-100">{{ c.content }}</pre>
                   </div>
@@ -271,12 +330,24 @@ onUnmounted(() => {
             </div>
 
             <div v-else>
-              <div class="text-sm font-semibold text-zinc-100">阅读</div>
-              <div v-if="!activeChapter" class="mt-3 text-xs text-zinc-400">请选择一个章节</div>
-              <div v-else class="mt-4 space-y-3">
+              <div class="text-sm font-semibold text-zinc-100">
+                阅读
+              </div>
+              <div
+                v-if="!activeChapter"
+                class="mt-3 text-xs text-zinc-400"
+              >
+                请选择一个章节
+              </div>
+              <div
+                v-else
+                class="mt-4 space-y-3"
+              >
                 <div class="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <div class="text-base font-semibold text-zinc-100">{{ activeChapter.title }}</div>
+                    <div class="text-base font-semibold text-zinc-100">
+                      {{ activeChapter.title }}
+                    </div>
                     <div class="mt-1 text-xs text-zinc-400">
                       序号: {{ activeChapter.order }} · {{ activeChapter.word_count }} 字 · {{ activeChapter.status }}
                     </div>

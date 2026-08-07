@@ -113,32 +113,58 @@ onUnmounted(() => {
 
     <div class="mx-auto max-w-6xl px-4 py-6">
       <div class="mb-4">
-        <div class="text-base font-semibold text-zinc-100">章节编辑</div>
-        <div class="mt-1 text-xs text-zinc-400">chapter_id: {{ chapterId }}</div>
+        <div class="text-base font-semibold text-zinc-100">
+          章节编辑
+        </div>
+        <div class="mt-1 text-xs text-zinc-400">
+          chapter_id: {{ chapterId }}
+        </div>
       </div>
 
-      <div v-if="errorMessage" class="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-4">
-        <div class="text-sm font-semibold text-red-200">操作失败</div>
-        <div class="mt-1 break-words text-xs text-red-200/80">{{ errorMessage }}</div>
+      <div
+        v-if="errorMessage"
+        class="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-4"
+      >
+        <div class="text-sm font-semibold text-red-200">
+          操作失败
+        </div>
+        <div class="mt-1 break-words text-xs text-red-200/80">
+          {{ errorMessage }}
+        </div>
       </div>
 
-      <div v-if="saveMessage" class="mb-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4">
-        <div class="text-sm font-semibold text-emerald-200">保存成功</div>
-        <div class="mt-1 break-words text-xs text-emerald-200/80">{{ saveMessage }}</div>
+      <div
+        v-if="saveMessage"
+        class="mb-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4"
+      >
+        <div class="text-sm font-semibold text-emerald-200">
+          保存成功
+        </div>
+        <div class="mt-1 break-words text-xs text-emerald-200/80">
+          {{ saveMessage }}
+        </div>
       </div>
 
-      <div v-if="isLoading" class="rounded-lg border border-zinc-800/60 bg-[#111A2E] p-6">
+      <div
+        v-if="isLoading"
+        class="rounded-lg border border-zinc-800/60 bg-[#111A2E] p-6"
+      >
         <div class="animate-pulse">
           <div class="h-5 w-56 rounded bg-zinc-800/60" />
           <div class="mt-3 h-3 w-80 rounded bg-zinc-800/60" />
         </div>
       </div>
 
-      <div v-else-if="item" class="space-y-4">
+      <div
+        v-else-if="item"
+        class="space-y-4"
+      >
         <div class="rounded-lg border border-zinc-800/60 bg-[#111A2E] p-6">
           <div class="grid gap-4 md:grid-cols-2">
             <div>
-              <div class="text-xs font-semibold text-zinc-200">标题</div>
+              <div class="text-xs font-semibold text-zinc-200">
+                标题
+              </div>
               <input
                 v-model="title"
                 class="mt-2 w-full rounded-md border border-zinc-700/60 bg-zinc-900/30 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-blue-400/70"
@@ -148,7 +174,9 @@ onUnmounted(() => {
 
             <div class="grid grid-cols-2 gap-4">
               <div>
-                <div class="text-xs font-semibold text-zinc-200">序号</div>
+                <div class="text-xs font-semibold text-zinc-200">
+                  序号
+                </div>
                 <input
                   v-model.number="order"
                   class="mt-2 w-full rounded-md border border-zinc-700/60 bg-zinc-900/30 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-blue-400/70"
@@ -157,22 +185,34 @@ onUnmounted(() => {
                 >
               </div>
               <div>
-                <div class="text-xs font-semibold text-zinc-200">状态</div>
+                <div class="text-xs font-semibold text-zinc-200">
+                  状态
+                </div>
                 <select
                   v-model="status"
                   class="mt-2 w-full rounded-md border border-zinc-700/60 bg-zinc-900/30 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-blue-400/70"
                 >
-                  <option value="Draft">Draft</option>
-                  <option value="Generating">Generating</option>
-                  <option value="Reviewing">Reviewing</option>
-                  <option value="Published">Published</option>
+                  <option value="Draft">
+                    Draft
+                  </option>
+                  <option value="Generating">
+                    Generating
+                  </option>
+                  <option value="Reviewing">
+                    Reviewing
+                  </option>
+                  <option value="Published">
+                    Published
+                  </option>
                 </select>
               </div>
             </div>
           </div>
 
           <div class="mt-4">
-            <div class="text-xs font-semibold text-zinc-200">正文</div>
+            <div class="text-xs font-semibold text-zinc-200">
+              正文
+            </div>
             <textarea
               v-model="content"
               class="mt-2 min-h-[520px] w-full resize-y rounded-md border border-zinc-700/60 bg-zinc-900/30 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-blue-400/70"

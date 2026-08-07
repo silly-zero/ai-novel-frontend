@@ -12,9 +12,14 @@ defineProps<{ item: NovelSummary }>()
     <div class="min-w-0 flex-1">
       <div class="flex items-center gap-2">
         <BookOpen class="h-4 w-4 text-blue-300" />
-        <div class="truncate text-sm font-semibold text-zinc-100">{{ item.title }}</div>
+        <div class="truncate text-sm font-semibold text-zinc-100">
+          {{ item.title }}
+        </div>
       </div>
-      <div v-if="item.description" class="mt-1 line-clamp-2 text-xs text-zinc-300/90">
+      <div
+        v-if="item.description"
+        class="mt-1 line-clamp-2 text-xs text-zinc-300/90"
+      >
         {{ item.description }}
       </div>
       <div class="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-zinc-400">
@@ -22,7 +27,10 @@ defineProps<{ item: NovelSummary }>()
         <span class="rounded bg-zinc-900/50 px-2 py-0.5">{{ item.status }}</span>
         <span class="rounded bg-zinc-900/50 px-2 py-0.5">更新: {{ new Date(item.updated_at).toLocaleString() }}</span>
       </div>
-      <div v-if="item.tags?.length" class="mt-2 flex flex-wrap gap-2">
+      <div
+        v-if="item.tags?.length"
+        class="mt-2 flex flex-wrap gap-2"
+      >
         <span
           v-for="t in item.tags"
           :key="t"

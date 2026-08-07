@@ -70,29 +70,47 @@ async function onSubmit() {
 
     <div class="mx-auto max-w-6xl px-4 py-6">
       <div class="mb-4">
-        <div class="text-base font-semibold text-zinc-100">新建小说</div>
-        <div class="mt-1 text-xs text-zinc-400">创建后会跳转到创作工作台</div>
+        <div class="text-base font-semibold text-zinc-100">
+          新建小说
+        </div>
+        <div class="mt-1 text-xs text-zinc-400">
+          创建后会跳转到创作工作台
+        </div>
       </div>
 
-      <div v-if="errorMessage" class="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-4">
-        <div class="text-sm font-semibold text-red-200">创建失败</div>
-        <div class="mt-1 break-words text-xs text-red-200/80">{{ errorMessage }}</div>
+      <div
+        v-if="errorMessage"
+        class="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-4"
+      >
+        <div class="text-sm font-semibold text-red-200">
+          创建失败
+        </div>
+        <div class="mt-1 break-words text-xs text-red-200/80">
+          {{ errorMessage }}
+        </div>
       </div>
 
       <div class="rounded-lg border border-zinc-800/60 bg-[#111A2E] p-6">
-        <form class="space-y-4" @submit.prevent="onSubmit">
+        <form
+          class="space-y-4"
+          @submit.prevent="onSubmit"
+        >
           <div>
-            <div class="text-xs font-semibold text-zinc-200">书名</div>
+            <div class="text-xs font-semibold text-zinc-200">
+              书名
+            </div>
             <input
               v-model="title"
               class="mt-2 w-full rounded-md border border-zinc-700/60 bg-zinc-900/30 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-blue-400/70"
               placeholder="例如：戒指里的修仙录"
               autocomplete="off"
-            />
+            >
           </div>
 
           <div>
-            <div class="text-xs font-semibold text-zinc-200">简介</div>
+            <div class="text-xs font-semibold text-zinc-200">
+              简介
+            </div>
             <textarea
               v-model="description"
               class="mt-2 min-h-24 w-full resize-y rounded-md border border-zinc-700/60 bg-zinc-900/30 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-blue-400/70"
@@ -102,28 +120,39 @@ async function onSubmit() {
 
           <div class="grid gap-4 md:grid-cols-2">
             <div>
-              <div class="text-xs font-semibold text-zinc-200">小说类型</div>
+              <div class="text-xs font-semibold text-zinc-200">
+                小说类型
+              </div>
               <input
                 v-model="novelType"
                 list="novel-types"
                 class="mt-2 w-full rounded-md border border-zinc-700/60 bg-zinc-900/30 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-blue-400/70"
                 placeholder="选择或输入，例如：玄幻"
                 autocomplete="off"
-              />
+              >
               <datalist id="novel-types">
-                <option v-for="t in tagSuggestions" :key="t" :value="t" />
+                <option
+                  v-for="t in tagSuggestions"
+                  :key="t"
+                  :value="t"
+                />
               </datalist>
             </div>
 
             <div>
-              <div class="text-xs font-semibold text-zinc-200">额外标签（可选）</div>
+              <div class="text-xs font-semibold text-zinc-200">
+                额外标签（可选）
+              </div>
               <input
                 v-model="extraTagsText"
                 class="mt-2 w-full rounded-md border border-zinc-700/60 bg-zinc-900/30 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-blue-400/70"
                 placeholder="用逗号分隔，例如：升级流, 热血"
                 autocomplete="off"
-              />
-              <div v-if="tags.length" class="mt-2 flex flex-wrap gap-2">
+              >
+              <div
+                v-if="tags.length"
+                class="mt-2 flex flex-wrap gap-2"
+              >
                 <span
                   v-for="t in tags"
                   :key="t"

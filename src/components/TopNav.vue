@@ -30,7 +30,9 @@ function onClick() {
     <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
       <div class="flex items-center gap-2">
         <div class="h-2 w-2 rounded-full bg-blue-400" />
-        <div class="text-sm font-semibold text-zinc-100">{{ title }}</div>
+        <div class="text-sm font-semibold text-zinc-100">
+          {{ title }}
+        </div>
       </div>
 
       <button
@@ -40,7 +42,10 @@ function onClick() {
         type="button"
         @click="onClick"
       >
-        <RefreshCcw class="h-4 w-4" :class="rightLoading ? 'animate-spin' : ''" />
+        <RefreshCcw
+          class="h-4 w-4"
+          :class="rightLoading ? 'animate-spin' : ''"
+        />
         <span>{{ rightText }}</span>
       </button>
     </div>
