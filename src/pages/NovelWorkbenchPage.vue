@@ -14,6 +14,11 @@ import {
   updateNovel,
 } from '@/utils/api'
 import type { ChapterItem, PreviewContextResponse, PreviewContextParams } from '@/utils/api'
+import {
+  reduceGenerationEvent,
+  reduceGenerationTerminal,
+} from '@/utils/generationState'
+import type { GenerationUIState } from '@/utils/generationState'
 
 const route = useRoute()
 const router = useRouter()
@@ -35,7 +40,6 @@ const previewError = ref<string | null>(null)
 const meta = ref<Record<string, unknown> | null>(null)
 const metaText = computed(() => (meta.value ? JSON.stringify(meta.value, null, 2) : ''))
 const output = ref('')
-type GenerationUIState = 'idle' | 'running' | 'cancelling' | 'success' | 'error' | 'cancelled'
 const generationState = ref<GenerationUIState>('idle')
 const isGenerationActive = computed(
   () => generationState.value === 'running' || generationState.value === 'cancelling',
@@ -388,52 +392,27 @@ async function onGenerate() {
   generateAbort.value = controller
 
   try {
-    const terminal = await streamGenerateChapter(params, controller.signal, ({ event, data }) => {
+    const terminal = await streamGenerateChapter(params, controller.signal, (event) => {
       if (generateAbort.value !== controller) return
-      if (event === 'start') {
-        const parsed = JSON.parse(data || '{}') as { generation_id?: string; message?: string }
-        if (!parsed.generation_id) throw new Error('生成开始事件缺少 generation_id')
-        generationId.value = parsed.generation_id
-        generateStatus.value = cancelRequested.value ? '正在取消' : parsed.message || '已开始生成'
+      const update = reduceGenerationEvent(event, generationState.value, cancelRequested.value)
+      if (update.generationId !== undefined) {
+        generationId.value = update.generationId
         void requestGenerationCancel(controller)
-        return
       }
-      if (event === 'context_meta') {
-        meta.value = JSON.parse(data || '{}') as Record<string, unknown>
-        return
-      }
-      if (event === 'retry') {
-        const parsed = JSON.parse(data || '{}') as { retry_count?: number; critique?: string }
-        output.value = ''
-        if (generationState.value !== 'cancelling') {
-          const idx = parsed.retry_count ?? 1
-          generateStatus.value = `审查未通过，开始第 ${idx} 次重写`
-          generateError.value = parsed.critique ? `重写原因：${parsed.critique}` : null
-        }
-        return
-      }
-      if (event === 'token') {
-        const parsed = JSON.parse(data || '{}') as { token?: unknown }
-        if (typeof parsed.token !== 'string') {
-          throw new Error('正文 Token 格式无效')
-        }
-        output.value += parsed.token
-      }
+      if (update.meta !== undefined) meta.value = update.meta
+      if (update.clearOutput) output.value = ''
+      if (update.appendToken !== undefined) output.value += update.appendToken
+      if (update.status !== undefined) generateStatus.value = update.status
+      if (update.error !== undefined) generateError.value = update.error
     })
 
     if (generateAbort.value !== controller) return
-    generationState.value = terminal.status
-    generateStatus.value =
-      terminal.status === 'success'
-        ? '生成完成'
-        : terminal.status === 'cancelled'
-          ? '生成已取消'
-          : '生成失败'
-    generateError.value = terminal.status === 'error' ? terminal.message || '生成失败' : null
-    if (terminal.status === 'success') {
-      hasGenerated.value = true
-      savePanelOpen.value = true
-    }
+    const terminalUpdate = reduceGenerationTerminal(terminal)
+    generationState.value = terminalUpdate.state
+    generateStatus.value = terminalUpdate.status
+    generateError.value = terminalUpdate.error
+    hasGenerated.value = terminalUpdate.hasGenerated
+    savePanelOpen.value = terminalUpdate.savePanelOpen
   } catch (err) {
     if (generateAbort.value !== controller) return
     if (err instanceof DOMException && err.name === 'AbortError') {
