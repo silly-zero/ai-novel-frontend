@@ -5,12 +5,10 @@ import TopNav from '@/components/TopNav.vue'
 import {
   APIResponseError,
   cancelGeneration,
-  createChapter,
   getNovel,
   listChapters,
   previewContext,
   streamGenerateChapter,
-  updateChapter,
   updateNovel,
 } from '@/utils/api'
 import type { ChapterItem, PreviewContextResponse, PreviewContextParams } from '@/utils/api'
@@ -19,6 +17,7 @@ import {
   reduceGenerationTerminal,
 } from '@/utils/generationState'
 import type { GenerationUIState } from '@/utils/generationState'
+import { resolveGenerationTarget, type GenerationTargetMode } from '@/utils/generationTarget'
 
 const route = useRoute()
 const router = useRouter()
@@ -41,8 +40,9 @@ const meta = ref<Record<string, unknown> | null>(null)
 const metaText = computed(() => (meta.value ? JSON.stringify(meta.value, null, 2) : ''))
 const output = ref('')
 const generationState = ref<GenerationUIState>('idle')
+const generationPreparing = ref(false)
 const isGenerationActive = computed(
-  () => generationState.value === 'running' || generationState.value === 'cancelling',
+  () => generationPreparing.value || generationState.value === 'running' || generationState.value === 'cancelling',
 )
 const generateError = ref<string | null>(null)
 const generateStatus = ref<string | null>(null)
@@ -55,17 +55,13 @@ const lastSavedIdea = ref('')
 const lastSavedOutline = ref('')
 const outlineDirty = computed(() => idea.value !== lastSavedIdea.value || outline.value !== lastSavedOutline.value)
 
-const savePanelOpen = ref(false)
-const saveTargetMode = ref<'byIndex' | 'existing' | 'new'>('byIndex')
+const saveTargetMode = ref<GenerationTargetMode>('byIndex')
 const saveChapters = ref<ChapterItem[]>([])
 const saveChaptersLoading = ref(false)
 const saveChaptersError = ref<string | null>(null)
 const selectedChapterId = ref<string>('')
-const saveGeneratedLoading = ref(false)
-const saveGeneratedError = ref<string | null>(null)
-const saveGeneratedMessage = ref<string | null>(null)
+const persistedMessage = ref<string | null>(null)
 const savedChapterId = ref<string | null>(null)
-const hasGenerated = ref(false)
 
 const previewAbort = new AbortController()
 const generateAbort = ref<AbortController | null>(null)
@@ -88,10 +84,20 @@ function buildChapterParams(): PreviewContextParams {
     chapter_index: Math.max(1, Number(chapterIndex.value || 1)),
     editor_notes: mergedEditorNotes || undefined,
     manual_context: manualContext.value.trim() || undefined,
-    persist: 0 as const,
   }
   base.idea = idea.value.trim() || undefined
+  base.outline = outline.value.trim() || undefined
+  base.existing_outline = outline.value.trim() || undefined
   return base
+}
+
+function buildPersistedChapterParams(chapterId: string | undefined, targetIndex: number): PreviewContextParams {
+  return {
+    ...buildChapterParams(),
+    chapter_id: chapterId,
+    chapter_index: targetIndex,
+    persist: 1,
+  }
 }
 
 function buildOutlineParams(): PreviewContextParams {
@@ -106,7 +112,7 @@ function buildOutlineParams(): PreviewContextParams {
 }
 
 async function savePreviewOutline() {
-  if (!preview.value?.full_outline) return
+  if (!preview.value?.full_outline || isGenerationActive.value) return
   isOutlineSaving.value = true
   outlineSaveMessage.value = null
   try {
@@ -181,14 +187,16 @@ async function requestGenerationCancel(controller: AbortController) {
     await cancelGeneration(generationNovelId.value, generationId.value)
   } catch (err) {
     if (generateAbort.value !== controller || generationState.value !== 'cancelling') return
-    generateError.value = err instanceof Error ? err.message : '取消请求未确认，请等待生成连接返回终态'
     if (err instanceof APIResponseError) {
       generationState.value = 'running'
       cancelRequested.value = false
       generateStatus.value = '取消请求被后端拒绝，可重试停止'
       return
     }
-    generateStatus.value = '正在取消，等待后端确认'
+    generateError.value = err instanceof Error ? err.message : '取消请求未确认，请重试停止'
+    generationState.value = 'running'
+    cancelRequested.value = false
+    generateStatus.value = '取消请求未确认，可重试停止'
   } finally {
     if (generateAbort.value === controller) {
       cancelInFlight.value = false
@@ -216,10 +224,7 @@ function clearOutput() {
   meta.value = null
   generateError.value = null
   generateStatus.value = null
-  hasGenerated.value = false
-  savePanelOpen.value = false
-  saveGeneratedError.value = null
-  saveGeneratedMessage.value = null
+  persistedMessage.value = null
   savedChapterId.value = null
 }
 
@@ -240,7 +245,7 @@ async function loadNovel() {
 }
 
 async function saveOutline() {
-  if (isOutlineSaving.value) return
+  if (isOutlineSaving.value || isGenerationActive.value) return
   isOutlineSaving.value = true
   outlineSaveMessage.value = null
   try {
@@ -261,98 +266,27 @@ async function saveOutline() {
     isOutlineSaving.value = false
   }
 }
-async function loadSaveChapters() {
+async function loadSaveChapters(): Promise<boolean> {
   saveChaptersLoading.value = true
   saveChaptersError.value = null
   try {
-    const res = await listChapters(novelId.value, previewAbort.signal)
-    saveChapters.value = res.items
-    if (!selectedChapterId.value && res.items.length) {
-      selectedChapterId.value = res.items[0]?.id ?? ''
+    const chapters: ChapterItem[] = []
+    const limit = 200
+    for (let offset = 0; ; offset += limit) {
+      const res = await listChapters(novelId.value, previewAbort.signal, { limit, offset })
+      chapters.push(...res.items)
+      if (res.items.length < limit) break
     }
+    saveChapters.value = chapters
+    if (!selectedChapterId.value && chapters.length) {
+      selectedChapterId.value = chapters[0]?.id ?? ''
+    }
+    return true
   } catch (err) {
     saveChaptersError.value = err instanceof Error ? err.message : '章节加载失败'
+    return false
   } finally {
     saveChaptersLoading.value = false
-  }
-}
-
-async function saveGeneratedToChapter() {
-  if (saveGeneratedLoading.value) return
-  saveGeneratedError.value = null
-  saveGeneratedMessage.value = null
-  savedChapterId.value = null
-
-  const text = output.value
-  if (!text.trim()) {
-    saveGeneratedError.value = '没有可保存的生成内容'
-    return
-  }
-
-  saveGeneratedLoading.value = true
-  try {
-    if (saveTargetMode.value === 'existing') {
-      if (!selectedChapterId.value) {
-        throw new Error('请选择要保存的章节')
-      }
-      const ok = window.confirm('确认覆盖该章节内容？')
-      if (!ok) return
-      const res = await updateChapter(
-        selectedChapterId.value,
-        {
-          content: text,
-          status: 'Draft',
-        },
-        previewAbort.signal,
-      )
-      savedChapterId.value = res.item.id
-    } else if (saveTargetMode.value === 'byIndex') {
-      await loadSaveChapters()
-      const idx = Math.max(1, Number(chapterIndex.value || 1))
-      const found = saveChapters.value.find((c) => c.order === idx)
-      if (found) {
-        const ok = window.confirm('确认覆盖该章节内容？')
-        if (!ok) return
-        const res = await updateChapter(
-          found.id,
-          {
-            content: text,
-            status: 'Draft',
-          },
-          previewAbort.signal,
-        )
-        savedChapterId.value = res.item.id
-      } else {
-        const res = await createChapter(
-          novelId.value,
-          {
-            order: idx,
-            title: `第${idx}章`,
-            content: text,
-            status: 'Draft',
-          },
-          previewAbort.signal,
-        )
-        savedChapterId.value = res.item.id
-      }
-    } else {
-      const res = await createChapter(
-        novelId.value,
-        {
-          title: '',
-          content: text,
-          status: 'Draft',
-        },
-        previewAbort.signal,
-      )
-      savedChapterId.value = res.item.id
-    }
-
-    saveGeneratedMessage.value = '已保存到章节'
-  } catch (err) {
-    saveGeneratedError.value = err instanceof Error ? err.message : '保存失败'
-  } finally {
-    saveGeneratedLoading.value = false
   }
 }
 
@@ -363,20 +297,46 @@ function goEditSavedChapter() {
 
 
 async function onGenerate() {
-  if (isGenerationActive.value) return
+  if (isGenerationActive.value || isOutlineSaving.value) return
+  generationPreparing.value = true
   generateError.value = null
   generateStatus.value = null
   meta.value = null
 
-  const params = buildChapterParams()
-  if (!params.novel_id) {
-    generateError.value = 'novel_id 缺失'
-    return
+  let params: PreviewContextParams | null = null
+  try {
+    const baseParams = buildChapterParams()
+    if (!baseParams.novel_id) {
+      generateError.value = 'novel_id 缺失'
+      return
+    }
+    if (!idea.value.trim() && !outline.value.trim()) {
+      generateError.value = '需要先填写 Idea 或保存全书大纲'
+      return
+    }
+    if (!(await loadSaveChapters())) {
+      generateError.value = saveChaptersError.value || '无法确认生成目标'
+      return
+    }
+
+    let target
+    try {
+      target = resolveGenerationTarget(
+        saveTargetMode.value,
+        Number(chapterIndex.value || 1),
+        selectedChapterId.value,
+        saveChapters.value,
+      )
+    } catch (err) {
+      generateError.value = err instanceof Error ? err.message : '生成目标无效'
+      return
+    }
+    if (target.overwrites && !window.confirm('确认覆盖该章节内容？')) return
+    params = buildPersistedChapterParams(target.chapterId, target.chapterIndex)
+  } finally {
+    generationPreparing.value = false
   }
-  if (!idea.value.trim() && !outline.value.trim()) {
-    generateError.value = '需要先填写 Idea 或保存全书大纲'
-    return
-  }
+  if (!params) return
 
   abortGenerationTransport()
   output.value = ''
@@ -385,8 +345,8 @@ async function onGenerate() {
   generationNovelId.value = params.novel_id
   cancelRequested.value = false
   cancelInFlight.value = false
-  hasGenerated.value = false
-  savePanelOpen.value = false
+  persistedMessage.value = null
+  savedChapterId.value = null
 
   const controller = new AbortController()
   generateAbort.value = controller
@@ -411,8 +371,12 @@ async function onGenerate() {
     generationState.value = terminalUpdate.state
     generateStatus.value = terminalUpdate.status
     generateError.value = terminalUpdate.error
-    hasGenerated.value = terminalUpdate.hasGenerated
-    savePanelOpen.value = terminalUpdate.savePanelOpen
+    savedChapterId.value = terminalUpdate.persistedChapterId
+    persistedMessage.value = terminalUpdate.persistedChapterId
+      ? terminal.status === 'success'
+        ? `正文已保存到章节 ${terminalUpdate.persistedChapterId}`
+        : `正文已保存到章节 ${terminalUpdate.persistedChapterId}，请前往编辑页处理派生失败`
+      : null
   } catch (err) {
     if (generateAbort.value !== controller) return
     if (err instanceof DOMException && err.name === 'AbortError') {
@@ -439,6 +403,7 @@ onUnmounted(() => {
 
 onMounted(() => {
   void loadNovel()
+  void loadSaveChapters()
 })
 </script>
 
@@ -475,7 +440,7 @@ onMounted(() => {
             </span>
             <button
               class="rounded-md bg-blue-500 px-3 py-2 text-xs font-semibold text-white transition hover:bg-blue-400 disabled:cursor-not-allowed disabled:opacity-60"
-              :disabled="isOutlineSaving || !outlineDirty"
+              :disabled="isOutlineSaving || !outlineDirty || isGenerationActive"
               type="button"
               @click="saveOutline"
             >
@@ -572,9 +537,10 @@ onMounted(() => {
                 </div>
                 <input
                   v-model.number="chapterIndex"
-                  class="mt-2 w-full rounded-md border border-zinc-700/60 bg-zinc-900/30 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-blue-400/70"
+                  class="mt-2 w-full rounded-md border border-zinc-700/60 bg-zinc-900/30 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-blue-400/70 disabled:cursor-not-allowed disabled:opacity-60"
                   type="number"
                   min="1"
+                  :disabled="isGenerationActive"
                 >
               </div>
 
@@ -663,6 +629,88 @@ onMounted(() => {
               </div>
             </div>
 
+            <div class="mt-4 rounded-md border border-zinc-800/60 bg-zinc-900/20 p-4">
+              <div class="text-xs font-semibold text-zinc-200">
+                生成并保存到
+              </div>
+              <div class="mt-2 flex flex-wrap gap-2">
+                <button
+                  class="rounded-md border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
+                  :class="saveTargetMode === 'byIndex' ? 'border-blue-400/70 bg-blue-500/20 text-blue-100' : 'border-zinc-700/60 bg-zinc-900/30 text-zinc-200 hover:bg-zinc-900/60'"
+                  :disabled="isGenerationActive"
+                  type="button"
+                  @click="saveTargetMode = 'byIndex'"
+                >
+                  按章节序号
+                </button>
+                <button
+                  class="rounded-md border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
+                  :class="saveTargetMode === 'existing' ? 'border-blue-400/70 bg-blue-500/20 text-blue-100' : 'border-zinc-700/60 bg-zinc-900/30 text-zinc-200 hover:bg-zinc-900/60'"
+                  :disabled="isGenerationActive"
+                  type="button"
+                  @click="saveTargetMode = 'existing'"
+                >
+                  覆盖已有章节
+                </button>
+                <button
+                  class="rounded-md border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
+                  :class="saveTargetMode === 'new' ? 'border-blue-400/70 bg-blue-500/20 text-blue-100' : 'border-zinc-700/60 bg-zinc-900/30 text-zinc-200 hover:bg-zinc-900/60'"
+                  :disabled="isGenerationActive"
+                  type="button"
+                  @click="saveTargetMode = 'new'"
+                >
+                  新建下一章
+                </button>
+              </div>
+              <div
+                v-if="saveTargetMode === 'byIndex'"
+                class="mt-2 text-[11px] text-zinc-400"
+              >
+                使用上方章节序号；已存在时覆盖同一章节，不存在时创建。
+              </div>
+              <div
+                v-else-if="saveTargetMode === 'existing'"
+                class="mt-3 flex flex-wrap items-center gap-2"
+              >
+                <select
+                  v-model="selectedChapterId"
+                  class="w-full rounded-md border border-zinc-700/60 bg-zinc-900/30 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-blue-400/70 md:w-auto"
+                  :disabled="saveChaptersLoading || isGenerationActive"
+                >
+                  <option value="">
+                    请选择章节
+                  </option>
+                  <option
+                    v-for="c in saveChapters"
+                    :key="c.id"
+                    :value="c.id"
+                  >
+                    {{ c.title || `第${c.order}章` }}
+                  </option>
+                </select>
+                <button
+                  class="rounded-md border border-zinc-700/60 bg-zinc-900/30 px-3 py-2 text-xs font-semibold text-zinc-100 transition hover:bg-zinc-900/60 disabled:cursor-not-allowed disabled:opacity-60"
+                  :disabled="saveChaptersLoading || isGenerationActive"
+                  type="button"
+                  @click="loadSaveChapters"
+                >
+                  {{ saveChaptersLoading ? '加载中...' : '刷新章节' }}
+                </button>
+              </div>
+              <div
+                v-else
+                class="mt-2 text-[11px] text-zinc-400"
+              >
+                自动使用当前最大章节序号加一。
+              </div>
+              <div
+                v-if="saveChaptersError"
+                class="mt-2 text-[11px] text-red-200/80"
+              >
+                {{ saveChaptersError }}
+              </div>
+            </div>
+
             <div class="mt-5 flex flex-wrap items-center gap-3">
               <button
                 class="inline-flex items-center justify-center rounded-md border border-zinc-700/60 bg-zinc-900/30 px-4 py-2 text-xs font-semibold text-zinc-100 transition hover:bg-zinc-900/60 disabled:cursor-not-allowed disabled:opacity-60"
@@ -675,7 +723,7 @@ onMounted(() => {
 
               <button
                 class="inline-flex items-center justify-center rounded-md bg-blue-500 px-4 py-2 text-xs font-semibold text-white transition hover:bg-blue-400 disabled:cursor-not-allowed disabled:opacity-60"
-                :disabled="isGenerationActive"
+                :disabled="isGenerationActive || isOutlineSaving"
                 type="button"
                 @click="onGenerate"
               >
@@ -722,139 +770,27 @@ onMounted(() => {
 
             <textarea
               v-model="output"
-              class="mt-4 min-h-80 w-full resize-y rounded-md border border-zinc-700/60 bg-zinc-900/30 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-blue-400/70"
+              class="mt-4 min-h-80 w-full resize-y rounded-md border border-zinc-700/60 bg-zinc-900/30 px-3 py-2 text-sm text-zinc-100 outline-none"
               placeholder="这里会实时显示 SSE 输出"
+              readonly
             />
-
-            <div
-              v-if="savePanelOpen"
-              class="mt-4 rounded-md border border-zinc-700/60 bg-zinc-900/20 p-4"
-            >
-              <div class="text-xs font-semibold text-zinc-200">
-                保存本次生成到章节
-              </div>
-              <div class="mt-2 flex flex-wrap items-center gap-2">
-                <button
-                  class="rounded-md border px-3 py-1.5 text-xs font-semibold transition"
-                  :class="
-                    saveTargetMode === 'byIndex'
-                      ? 'border-blue-400/70 bg-blue-500/20 text-blue-100'
-                      : 'border-zinc-700/60 bg-zinc-900/30 text-zinc-200 hover:bg-zinc-900/60'
-                  "
-                  type="button"
-                  @click="saveTargetMode = 'byIndex'"
-                >
-                  按章节序号
-                </button>
-                <button
-                  class="rounded-md border px-3 py-1.5 text-xs font-semibold transition"
-                  :class="
-                    saveTargetMode === 'existing'
-                      ? 'border-blue-400/70 bg-blue-500/20 text-blue-100'
-                      : 'border-zinc-700/60 bg-zinc-900/30 text-zinc-200 hover:bg-zinc-900/60'
-                  "
-                  type="button"
-                  @click="
-                    saveTargetMode = 'existing';
-                    void loadSaveChapters();
-                  "
-                >
-                  覆盖已有章节
-                </button>
-                <button
-                  class="rounded-md border px-3 py-1.5 text-xs font-semibold transition"
-                  :class="
-                    saveTargetMode === 'new'
-                      ? 'border-blue-400/70 bg-blue-500/20 text-blue-100'
-                      : 'border-zinc-700/60 bg-zinc-900/30 text-zinc-200 hover:bg-zinc-900/60'
-                  "
-                  type="button"
-                  @click="saveTargetMode = 'new'"
-                >
-                  新建章节
-                </button>
-              </div>
-
-              <div
-                v-if="saveTargetMode === 'byIndex'"
-                class="mt-2 text-[11px] text-zinc-400"
-              >
-                保存到当前章节序号对应章节；若不存在会自动创建。
-              </div>
-
-              <div
-                v-else-if="saveTargetMode === 'existing'"
-                class="mt-3"
-              >
-                <div class="flex flex-wrap items-center gap-2">
-                  <select
-                    v-model="selectedChapterId"
-                    class="w-full rounded-md border border-zinc-700/60 bg-zinc-900/30 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-blue-400/70 md:w-auto"
-                    :disabled="saveChaptersLoading"
-                  >
-                    <option
-                      v-for="c in saveChapters"
-                      :key="c.id"
-                      :value="c.id"
-                    >
-                      {{ c.title || `第${c.order}章` }}
-                    </option>
-                  </select>
-                  <button
-                    class="rounded-md border border-zinc-700/60 bg-zinc-900/30 px-3 py-2 text-xs font-semibold text-zinc-100 transition hover:bg-zinc-900/60 disabled:cursor-not-allowed disabled:opacity-60"
-                    :disabled="saveChaptersLoading"
-                    type="button"
-                    @click="loadSaveChapters"
-                  >
-                    {{ saveChaptersLoading ? '加载中...' : '刷新章节' }}
-                  </button>
-                </div>
-                <div
-                  v-if="saveChaptersError"
-                  class="mt-2 text-[11px] text-red-200/80"
-                >
-                  {{ saveChaptersError }}
-                </div>
-                <div
-                  v-else-if="saveChapters.length === 0"
-                  class="mt-2 text-[11px] text-zinc-400"
-                >
-                  当前小说还没有章节。
-                </div>
-              </div>
-
-              <div
-                v-if="saveGeneratedError"
-                class="mt-3 text-[11px] text-red-200/80"
-              >
-                {{ saveGeneratedError }}
-              </div>
-              <div
-                v-if="saveGeneratedMessage"
-                class="mt-3 text-[11px] text-emerald-200/80"
-              >
-                {{ saveGeneratedMessage }}
-              </div>
-
-              <div class="mt-3 flex flex-wrap items-center gap-2">
-                <button
-                  class="rounded-md bg-blue-500 px-3 py-2 text-xs font-semibold text-white transition hover:bg-blue-400 disabled:cursor-not-allowed disabled:opacity-60"
-                  :disabled="saveGeneratedLoading"
-                  type="button"
-                  @click="saveGeneratedToChapter"
-                >
-                  {{ saveGeneratedLoading ? '保存中...' : '保存到章节' }}
-                </button>
-                <button
-                  v-if="savedChapterId"
-                  class="rounded-md border border-zinc-700/60 bg-zinc-900/30 px-3 py-2 text-xs font-semibold text-zinc-100 transition hover:bg-zinc-900/60"
-                  type="button"
-                  @click="goEditSavedChapter"
-                >
-                  去编辑
-                </button>
-              </div>
+            <div class="mt-2 text-[11px] text-zinc-400">
+              生成结果由后端直接保存；如需修改正文，请进入章节编辑页。
             </div>
+            <div
+              v-if="persistedMessage"
+              class="mt-3 rounded-md border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-200"
+            >
+              {{ persistedMessage }}
+            </div>
+            <button
+              v-if="savedChapterId"
+              class="mt-3 rounded-md border border-zinc-700/60 bg-zinc-900/30 px-3 py-2 text-xs font-semibold text-zinc-100 transition hover:bg-zinc-900/60"
+              type="button"
+              @click="goEditSavedChapter"
+            >
+              去编辑已保存章节
+            </button>
           </div>
         </div>
 
@@ -905,7 +841,7 @@ onMounted(() => {
                 <div class="mt-2 flex items-center gap-2">
                   <button
                     class="rounded-md border border-blue-400/70 bg-blue-500/20 px-3 py-1.5 text-[11px] font-semibold text-blue-100 transition hover:bg-blue-500/30 disabled:cursor-not-allowed disabled:opacity-60"
-                    :disabled="isOutlineSaving"
+                    :disabled="isOutlineSaving || isGenerationActive"
                     type="button"
                     @click="savePreviewOutline"
                   >

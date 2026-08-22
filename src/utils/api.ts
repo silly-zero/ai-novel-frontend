@@ -13,6 +13,17 @@ export type NovelDetail = NovelSummary & {
   outline?: string
 }
 
+export type DerivedStatus = 'Pending' | 'Ready' | 'Failed'
+
+export type DerivedTaskStatus = 'Pending' | 'Running' | 'Ready' | 'Failed'
+
+export type DerivedTaskItem = {
+  handler_key: string
+  status: DerivedTaskStatus
+  attempts: number
+  last_error?: string
+}
+
 export type ChapterItem = {
   id: string
   novel_id: string
@@ -21,8 +32,23 @@ export type ChapterItem = {
   word_count: number
   order: number
   status: string
+  derived_status: DerivedStatus
+  derived_retryable: boolean
+  derived_tasks?: DerivedTaskItem[]
   created_at: string
   updated_at: string
+}
+
+export type ChapterDetailItem = ChapterItem & {
+  derived_tasks: DerivedTaskItem[]
+}
+
+export type ChapterDerivedSnapshot = {
+  chapter_id: string
+  derived_status: DerivedStatus
+  derived_retryable: boolean
+  derived_tasks: DerivedTaskItem[]
+  error: string
 }
 
 export type ListNovelsResponse = {
@@ -75,7 +101,7 @@ export type ListChaptersResponse = {
 }
 
 export type GetChapterResponse = {
-  item: ChapterItem
+  item: ChapterDetailItem
 }
 
 export type CreateChapterRequest = {
@@ -162,6 +188,47 @@ export class APIResponseError extends Error {
   }
 }
 
+export class RetryChapterDerivedError extends APIResponseError {
+  constructor(
+    message: string,
+    status: number,
+    readonly snapshot: ChapterDerivedSnapshot,
+  ) {
+    super(message, status)
+    this.name = 'RetryChapterDerivedError'
+  }
+}
+
+function isDerivedStatus(value: unknown): value is DerivedStatus {
+  return value === 'Pending' || value === 'Ready' || value === 'Failed'
+}
+
+function isDerivedTaskStatus(value: unknown): value is DerivedTaskStatus {
+  return value === 'Pending' || value === 'Running' || value === 'Ready' || value === 'Failed'
+}
+
+function isDerivedTaskItem(value: unknown): value is DerivedTaskItem {
+  if (!value || typeof value !== 'object') return false
+  const task = value as Partial<DerivedTaskItem>
+  return typeof task.handler_key === 'string'
+    && isDerivedTaskStatus(task.status)
+    && typeof task.attempts === 'number'
+    && Number.isInteger(task.attempts)
+    && task.attempts >= 0
+    && (task.last_error === undefined || typeof task.last_error === 'string')
+}
+
+function isChapterDerivedSnapshot(value: unknown): value is ChapterDerivedSnapshot {
+  if (!value || typeof value !== 'object') return false
+  const snapshot = value as Partial<ChapterDerivedSnapshot>
+  return typeof snapshot.chapter_id === 'string'
+    && isDerivedStatus(snapshot.derived_status)
+    && typeof snapshot.derived_retryable === 'boolean'
+    && Array.isArray(snapshot.derived_tasks)
+    && snapshot.derived_tasks.every(isDerivedTaskItem)
+    && typeof snapshot.error === 'string'
+}
+
 async function apiJson<T>(method: 'POST' | 'PUT' | 'PATCH', path: string, body: unknown, signal?: AbortSignal): Promise<T> {
   const res = await fetch(withBaseUrl(path), {
     method,
@@ -216,8 +283,16 @@ export function updateNovel(id: string, payload: UpdateNovelRequest, signal?: Ab
   )
 }
 
-export function listChapters(novelId: string, signal?: AbortSignal) {
-  return apiGet<ListChaptersResponse>(`/api/v1/novels/${encodeURIComponent(novelId)}/chapters`, signal)
+export function listChapters(
+  novelId: string,
+  signal?: AbortSignal,
+  pagination: { limit?: number; offset?: number } = {},
+) {
+  const path = withQuery(`/api/v1/novels/${encodeURIComponent(novelId)}/chapters`, {
+    limit: pagination.limit,
+    offset: pagination.offset,
+  })
+  return apiGet<ListChaptersResponse>(path, signal)
 }
 
 export function getChapter(id: string, signal?: AbortSignal) {
@@ -244,6 +319,33 @@ export function updateChapter(id: string, payload: UpdateChapterRequest, signal?
 
 export function deleteChapter(id: string, signal?: AbortSignal) {
   return apiDelete(`/api/v1/chapters/${encodeURIComponent(id)}`, signal)
+}
+
+export async function retryChapterDerived(id: string, signal?: AbortSignal): Promise<ChapterDerivedSnapshot> {
+  const res = await fetch(withBaseUrl(`/api/v1/chapters/${encodeURIComponent(id)}/derived/retry`), {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: '{}',
+    signal,
+  })
+  const text = await res.text().catch(() => '')
+  let parsed: unknown
+  if (text) {
+    try {
+      parsed = JSON.parse(text)
+    } catch {
+      parsed = undefined
+    }
+  }
+  if (res.ok && isChapterDerivedSnapshot(parsed)) return parsed
+  if (res.status === 500 && isChapterDerivedSnapshot(parsed)) {
+    throw new RetryChapterDerivedError(parsed.error || '派生任务重试失败', res.status, parsed)
+  }
+  const message = text ? `${res.status} ${res.statusText}: ${text}` : `${res.status} ${res.statusText}`
+  throw new APIResponseError(message, res.status)
 }
 
 export function previewContext(params: PreviewContextParams, signal?: AbortSignal) {
@@ -287,6 +389,8 @@ export type GenerationTerminal = {
   generation_id: string
   status: 'success' | 'error' | 'cancelled'
   message?: string
+  chapter_id?: string
+  persisted?: boolean
 }
 
 export type CancelGenerationResponse = {
@@ -360,7 +464,8 @@ export async function streamGenerateChapter(
       const parsed = JSON.parse(event.data || '{}') as Partial<GenerationTerminal>
       if (
         typeof parsed.generation_id !== 'string' ||
-        !['success', 'error', 'cancelled'].includes(parsed.status ?? '')
+        !['success', 'error', 'cancelled'].includes(parsed.status ?? '') ||
+        (parsed.persisted === true && (typeof parsed.chapter_id !== 'string' || !parsed.chapter_id))
       ) {
         throw new Error('生成终态格式无效')
       }

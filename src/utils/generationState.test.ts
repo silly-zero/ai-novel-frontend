@@ -68,37 +68,58 @@ describe('reduceGenerationEvent', () => {
 })
 
 describe('reduceGenerationTerminal', () => {
-  it('opens save state only after success', () => {
-    expect(reduceGenerationTerminal({ generation_id: 'generation-1', status: 'success' })).toEqual({
+  it('exposes the persisted chapter after success', () => {
+    expect(reduceGenerationTerminal({
+      generation_id: 'generation-1',
+      status: 'success',
+      chapter_id: '11',
+      persisted: true,
+    })).toEqual({
       state: 'success',
-      status: '生成完成',
+      status: '生成并保存完成',
       error: null,
       hasGenerated: true,
-      savePanelOpen: true,
+      persistedChapterId: '11',
     })
   })
 
-  it('keeps failed and cancelled generations out of save state', () => {
+  it('preserves the saved chapter when only derived processing fails', () => {
+    expect(reduceGenerationTerminal({
+      generation_id: 'generation-1',
+      status: 'error',
+      message: '派生失败',
+      chapter_id: '11',
+      persisted: true,
+    })).toEqual({
+      state: 'error',
+      status: '正文已保存，派生处理未完成',
+      error: '派生失败',
+      hasGenerated: true,
+      persistedChapterId: '11',
+    })
+  })
+
+  it('keeps failed and cancelled generations out of persisted state', () => {
     expect(reduceGenerationTerminal({
       generation_id: 'generation-1',
       status: 'error',
       message: '模型断流',
     })).toEqual({
       state: 'error',
-      status: '生成失败',
+      status: '生成失败，正文未保存',
       error: '模型断流',
       hasGenerated: false,
-      savePanelOpen: false,
+      persistedChapterId: null,
     })
     expect(reduceGenerationTerminal({
       generation_id: 'generation-1',
       status: 'cancelled',
     })).toEqual({
       state: 'cancelled',
-      status: '生成已取消',
+      status: '生成已取消，正文未保存',
       error: null,
       hasGenerated: false,
-      savePanelOpen: false,
+      persistedChapterId: null,
     })
   })
 })

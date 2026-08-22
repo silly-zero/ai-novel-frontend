@@ -16,7 +16,7 @@ export type GenerationTerminalUpdate = {
   status: string
   error: string | null
   hasGenerated: boolean
-  savePanelOpen: boolean
+  persistedChapterId: string | null
 }
 
 export function reduceGenerationEvent(
@@ -68,17 +68,23 @@ export function reduceGenerationEvent(
 }
 
 export function reduceGenerationTerminal(terminal: GenerationTerminal): GenerationTerminalUpdate {
+  const persistedChapterId = terminal.persisted === true && terminal.chapter_id ? terminal.chapter_id : null
   const success = terminal.status === 'success'
+  const persistedError = terminal.status === 'error' && persistedChapterId !== null
   return {
     state: terminal.status,
     status:
-      terminal.status === 'success'
-        ? '生成完成'
-        : terminal.status === 'cancelled'
-          ? '生成已取消'
-          : '生成失败',
+      success && persistedChapterId
+        ? '生成并保存完成'
+        : success
+          ? '生成完成'
+          : persistedError
+            ? '正文已保存，派生处理未完成'
+            : terminal.status === 'cancelled'
+              ? '生成已取消，正文未保存'
+              : '生成失败，正文未保存',
     error: terminal.status === 'error' ? terminal.message || '生成失败' : null,
-    hasGenerated: success,
-    savePanelOpen: success,
+    hasGenerated: success || persistedError,
+    persistedChapterId,
   }
 }

@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import TopNav from '@/components/TopNav.vue'
 import { createChapter, deleteChapter, getNovel, type ChapterItem, type NovelSummary } from '@/utils/api'
+import { derivedStatusClass, derivedStatusLabel } from '@/utils/derivedState'
 
 const route = useRoute()
 const router = useRouter()
@@ -271,6 +272,12 @@ onUnmounted(() => {
                       <span>序号: {{ c.order }}</span>
                       <span>{{ c.status }}</span>
                       <span>{{ c.word_count }} 字</span>
+                      <span
+                        class="rounded border px-1.5 py-0.5 text-[10px] font-semibold"
+                        :class="derivedStatusClass(c.derived_status)"
+                      >
+                        {{ derivedStatusLabel(c.derived_status) }}
+                      </span>
                     </div>
                   </div>
                   <router-link
@@ -316,8 +323,14 @@ onUnmounted(() => {
                   :key="c.id"
                   class="space-y-2"
                 >
-                  <div class="text-sm font-semibold text-zinc-100">
-                    {{ c.title || `第${c.order}章` }}
+                  <div class="flex flex-wrap items-center gap-2 text-sm font-semibold text-zinc-100">
+                    <span>{{ c.title || `第${c.order}章` }}</span>
+                    <span
+                      class="rounded border px-1.5 py-0.5 text-[10px] font-semibold"
+                      :class="derivedStatusClass(c.derived_status)"
+                    >
+                      {{ derivedStatusLabel(c.derived_status) }}
+                    </span>
                   </div>
                   <div class="text-[11px] text-zinc-400">
                     更新: {{ new Date(c.updated_at).toLocaleString() }}
@@ -345,8 +358,14 @@ onUnmounted(() => {
               >
                 <div class="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <div class="text-base font-semibold text-zinc-100">
-                      {{ activeChapter.title }}
+                    <div class="flex flex-wrap items-center gap-2 text-base font-semibold text-zinc-100">
+                      <span>{{ activeChapter.title }}</span>
+                      <span
+                        class="rounded border px-1.5 py-0.5 text-[10px] font-semibold"
+                        :class="derivedStatusClass(activeChapter.derived_status)"
+                      >
+                        {{ derivedStatusLabel(activeChapter.derived_status) }}
+                      </span>
                     </div>
                     <div class="mt-1 text-xs text-zinc-400">
                       序号: {{ activeChapter.order }} · {{ activeChapter.word_count }} 字 · {{ activeChapter.status }}
