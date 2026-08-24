@@ -60,6 +60,7 @@ const saveChapters = ref<ChapterItem[]>([])
 const saveChaptersLoading = ref(false)
 const saveChaptersError = ref<string | null>(null)
 const selectedChapterId = ref<string>('')
+const saveChaptersRequestId = ref(0)
 const persistedMessage = ref<string | null>(null)
 const savedChapterId = ref<string | null>(null)
 
@@ -267,6 +268,7 @@ async function saveOutline() {
   }
 }
 async function loadSaveChapters(): Promise<boolean> {
+  const requestId = ++saveChaptersRequestId.value
   saveChaptersLoading.value = true
   saveChaptersError.value = null
   try {
@@ -277,16 +279,20 @@ async function loadSaveChapters(): Promise<boolean> {
       chapters.push(...res.items)
       if (res.items.length < limit) break
     }
+    if (requestId !== saveChaptersRequestId.value) return true
     saveChapters.value = chapters
-    if (!selectedChapterId.value && chapters.length) {
+    if (!chapters.some(chapter => chapter.id === selectedChapterId.value)) {
       selectedChapterId.value = chapters[0]?.id ?? ''
     }
     return true
   } catch (err) {
+    if (requestId !== saveChaptersRequestId.value) return false
     saveChaptersError.value = err instanceof Error ? err.message : '章节加载失败'
     return false
   } finally {
-    saveChaptersLoading.value = false
+    if (requestId === saveChaptersRequestId.value) {
+      saveChaptersLoading.value = false
+    }
   }
 }
 
@@ -377,6 +383,12 @@ async function onGenerate() {
         ? `正文已保存到章节 ${terminalUpdate.persistedChapterId}`
         : `正文已保存到章节 ${terminalUpdate.persistedChapterId}，请前往编辑页处理派生失败`
       : null
+    if (terminalUpdate.persistedChapterId) {
+      await loadSaveChapters()
+      selectedChapterId.value = terminalUpdate.persistedChapterId
+    } else {
+      void loadSaveChapters()
+    }
   } catch (err) {
     if (generateAbort.value !== controller) return
     if (err instanceof DOMException && err.name === 'AbortError') {
