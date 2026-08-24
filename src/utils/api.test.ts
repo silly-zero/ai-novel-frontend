@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   APIResponseError,
   RetryChapterDerivedError,
-  buildGenerateChapterUrl,
   listChapters,
+  previewContext,
   retryChapterDerived,
   streamGenerateChapter,
 } from './api'
@@ -25,17 +25,6 @@ function sseResponse(chunks: string[], status = 200) {
 
 afterEach(() => {
   vi.unstubAllGlobals()
-})
-
-describe('buildGenerateChapterUrl', () => {
-  it('includes the persisted chapter target', () => {
-    expect(buildGenerateChapterUrl({
-      novel_id: '7',
-      chapter_id: '11',
-      chapter_index: 4,
-      persist: 1,
-    })).toContain('novel_id=7&chapter_id=11&persist=1&chapter_index=4')
-  })
 })
 
 describe('listChapters', () => {
@@ -106,7 +95,35 @@ describe('retryChapterDerived', () => {
   })
 })
 
+describe('previewContext', () => {
+  it('posts JSON without putting preview fields in the URL', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ full_outline: '大纲' }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const signal = new AbortController().signal
+    await previewContext({ novel_id: '7', chapter_index: 2, idea: '想法', editor_notes: '备注' }, signal)
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/v1/novel/preview-context')
+    expect(init.method).toBe('POST')
+    expect(init.signal).toBe(signal)
+    expect(JSON.parse(init.body)).toEqual({ novel_id: 7, chapter_index: 2, idea: '想法', editor_notes: '备注' })
+  })
+})
+
 describe('streamGenerateChapter', () => {
+  it('uses POST JSON without putting generation fields in the URL', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(sseResponse([
+      'event: start\ndata: {"generation_id":"generation-1"}\n\n',
+      'event: terminal\ndata: {"generation_id":"generation-1","status":"success"}\n\n',
+    ]))
+    vi.stubGlobal('fetch', fetchMock)
+    await streamGenerateChapter({ novel_id: 7, chapter_id: 11, chapter_index: 4, persist: true, idea: '文本' }, new AbortController().signal, () => undefined)
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/v1/novel/generate')
+    expect(init.method).toBe('POST')
+    expect(init.headers).toEqual({ Accept: 'text/event-stream', 'Content-Type': 'application/json' })
+    expect(JSON.parse(init.body)).toEqual({ novel_id: 7, chapter_id: 11, chapter_index: 4, persist: true, idea: '文本' })
+  })
+
   it('preserves process event order across arbitrary chunks and returns success terminal', async () => {
     const response = sseResponse([
       'event: start\ndata: {"generation_id":"generation-1"}\n\nevent: context_',
@@ -119,7 +136,7 @@ describe('streamGenerateChapter', () => {
     const events: Array<{ event: string; data: string }> = []
 
     const terminal = await streamGenerateChapter(
-      { novel_id: '7', chapter_index: 2 },
+      { novel_id: 7, chapter_index: 2 },
       new AbortController().signal,
       event => events.push(event),
     )
@@ -141,7 +158,7 @@ describe('streamGenerateChapter', () => {
     const events: string[] = []
 
     const terminal = await streamGenerateChapter(
-      { novel_id: '7' },
+      { novel_id: 7 },
       new AbortController().signal,
       event => events.push(event.event),
     )
@@ -158,7 +175,7 @@ describe('streamGenerateChapter', () => {
     ])))
 
     await expect(streamGenerateChapter(
-      { novel_id: '7', persist: 1 },
+      { novel_id: 7, persist: true },
       new AbortController().signal,
       () => undefined,
     )).rejects.toThrow('生成终态格式无效')
@@ -171,7 +188,7 @@ describe('streamGenerateChapter', () => {
     ])))
 
     await expect(streamGenerateChapter(
-      { novel_id: '7' },
+      { novel_id: 7 },
       new AbortController().signal,
       () => undefined,
     )).rejects.toThrow('生成连接提前结束')
@@ -182,7 +199,7 @@ describe('streamGenerateChapter', () => {
       'event: token\ndata: {"token":"越序"}\n\n',
     ])))
     await expect(streamGenerateChapter(
-      { novel_id: '7' },
+      { novel_id: 7 },
       new AbortController().signal,
       () => undefined,
     )).rejects.toThrow('生成开始前收到过程事件')
@@ -192,7 +209,7 @@ describe('streamGenerateChapter', () => {
       'event: terminal\ndata: {"generation_id":"generation-2","status":"error"}\n\n',
     ])))
     await expect(streamGenerateChapter(
-      { novel_id: '7' },
+      { novel_id: 7 },
       new AbortController().signal,
       () => undefined,
     )).rejects.toThrow('生成终态与当前任务不匹配')

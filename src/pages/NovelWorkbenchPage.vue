@@ -11,7 +11,7 @@ import {
   streamGenerateChapter,
   updateNovel,
 } from '@/utils/api'
-import type { ChapterItem, PreviewContextResponse, PreviewContextParams } from '@/utils/api'
+import type { ChapterItem, GenerateChapterRequest, PreviewContextResponse, PreviewContextParams } from '@/utils/api'
 import {
   reduceGenerationEvent,
   reduceGenerationTerminal,
@@ -92,12 +92,22 @@ function buildChapterParams(): PreviewContextParams {
   return base
 }
 
-function buildPersistedChapterParams(chapterId: string | undefined, targetIndex: number): PreviewContextParams {
+function buildPersistedChapterParams(chapterId: string | undefined, targetIndex: number): GenerateChapterRequest {
+  const parsedNovelId = Number(novelId.value)
+  const parsedChapterId = chapterId === undefined ? undefined : Number(chapterId)
+  if (!Number.isSafeInteger(parsedNovelId) || parsedNovelId <= 0 || (parsedChapterId !== undefined && (!Number.isSafeInteger(parsedChapterId) || parsedChapterId <= 0))) {
+    throw new Error('生成目标 ID 无效')
+  }
   return {
-    ...buildChapterParams(),
-    chapter_id: chapterId,
+    novel_id: parsedNovelId,
+    chapter_id: parsedChapterId,
     chapter_index: targetIndex,
-    persist: 1,
+    persist: true,
+    outline: outline.value.trim() || undefined,
+    idea: idea.value.trim() || undefined,
+    existing_outline: outline.value.trim() || undefined,
+    editor_notes: buildChapterParams().editor_notes,
+    manual_context: manualContext.value.trim() || undefined,
   }
 }
 
@@ -309,7 +319,7 @@ async function onGenerate() {
   generateStatus.value = null
   meta.value = null
 
-  let params: PreviewContextParams | null = null
+  let params: GenerateChapterRequest | null = null
   try {
     const baseParams = buildChapterParams()
     if (!baseParams.novel_id) {
@@ -348,7 +358,7 @@ async function onGenerate() {
   output.value = ''
   generationState.value = 'running'
   generationId.value = null
-  generationNovelId.value = params.novel_id
+  generationNovelId.value = String(params.novel_id)
   cancelRequested.value = false
   cancelInFlight.value = false
   persistedMessage.value = null

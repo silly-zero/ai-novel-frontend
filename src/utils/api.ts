@@ -91,6 +91,19 @@ export type PreviewContextParams = {
   manual_context?: string
 }
 
+export type GenerateChapterRequest = {
+  novel_id: number
+  chapter_id?: number
+  persist?: boolean
+  chapter_index?: number
+  outline?: string
+  idea?: string
+  existing_outline?: string
+  outline_start?: number
+  outline_end?: number
+  editor_notes?: string
+  manual_context?: string
+}
 export type GetNovelResponse = {
   item: NovelDetail
   chapters: ChapterItem[]
@@ -349,8 +362,8 @@ export async function retryChapterDerived(id: string, signal?: AbortSignal): Pro
 }
 
 export function previewContext(params: PreviewContextParams, signal?: AbortSignal) {
-  const path = withQuery('/api/v1/novel/preview-context', {
-    novel_id: params.novel_id,
+  return apiJson<PreviewContextResponse>('POST', '/api/v1/novel/preview-context', {
+    novel_id: Number(params.novel_id),
     chapter_index: params.chapter_index,
     outline: params.outline,
     idea: params.idea,
@@ -359,25 +372,7 @@ export function previewContext(params: PreviewContextParams, signal?: AbortSigna
     outline_end: params.outline_end,
     editor_notes: params.editor_notes,
     manual_context: params.manual_context,
-  })
-  return apiGet<PreviewContextResponse>(path, signal)
-}
-
-export function buildGenerateChapterUrl(params: PreviewContextParams) {
-  const path = withQuery('/api/v1/novel/generate', {
-    novel_id: params.novel_id,
-    chapter_id: params.chapter_id,
-    persist: params.persist,
-    chapter_index: params.chapter_index,
-    outline: params.outline,
-    idea: params.idea,
-    existing_outline: params.existing_outline,
-    outline_start: params.outline_start,
-    outline_end: params.outline_end,
-    editor_notes: params.editor_notes,
-    manual_context: params.manual_context,
-  })
-  return withBaseUrl(path)
+  }, signal)
 }
 
 export type GenerateStreamEvent = {
@@ -421,15 +416,17 @@ export async function cancelGeneration(novelId: string, generationId: string, si
 }
 
 export async function streamGenerateChapter(
-  params: PreviewContextParams,
+  params: GenerateChapterRequest,
   signal: AbortSignal,
   onEvent: (event: GenerateStreamEvent) => void,
 ): Promise<GenerationTerminal> {
-  const res = await fetch(buildGenerateChapterUrl(params), {
-    method: 'GET',
+  const res = await fetch(withBaseUrl('/api/v1/novel/generate'), {
+    method: 'POST',
     headers: {
       Accept: 'text/event-stream',
+      'Content-Type': 'application/json',
     },
+    body: JSON.stringify(params),
     signal,
   })
   if (!res.ok) {
