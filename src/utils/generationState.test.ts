@@ -18,11 +18,11 @@ describe('reduceGenerationEvent', () => {
     expect(start).toEqual({ generationId: 'generation-1', status: '准备中' })
 
     const meta = reduceGenerationEvent(
-      event('context_meta', { chapter_index: 2 }),
+      event('context_meta', { chapter_index: 2, chapter_id: null, context_stats: { context_lines: 4, scene_card_lines: 2 } }),
       'running',
       false,
     )
-    expect(meta.meta).toEqual({ chapter_index: 2 })
+    expect(meta.meta).toEqual({ chapter_index: 2, chapter_id: null, context_stats: { context_lines: 4, scene_card_lines: 2 } })
 
     let output = ''
     for (const token of ['第一段', '第二段']) {

@@ -1,10 +1,10 @@
-import type { GenerateStreamEvent, GenerationTerminal } from '@/utils/api'
+import type { GenerateStreamEvent, GenerationContextMeta, GenerationTerminal } from '@/utils/api'
 
 export type GenerationUIState = 'idle' | 'running' | 'cancelling' | 'success' | 'error' | 'cancelled'
 
 export type GenerationEventUpdate = {
   generationId?: string
-  meta?: Record<string, unknown>
+  meta?: GenerationContextMeta
   appendToken?: string
   clearOutput?: boolean
   status?: string
@@ -19,6 +19,15 @@ export type GenerationTerminalUpdate = {
   persistedChapterId: string | null
 }
 
+function parseGenerationContextMeta(value: unknown): GenerationContextMeta {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('生成上下文摘要格式无效')
+  const meta = value as Record<string, unknown>
+  const stats = meta.context_stats
+  if (!Number.isSafeInteger(meta.chapter_index) || (meta.chapter_index as number) <= 0 || (meta.chapter_id !== null && (typeof meta.chapter_id !== 'string' || !meta.chapter_id)) || !stats || typeof stats !== 'object' || Array.isArray(stats)) throw new Error('生成上下文摘要格式无效')
+  const contextStats = stats as Record<string, unknown>
+  if (![contextStats.context_lines, contextStats.scene_card_lines].every(value => Number.isSafeInteger(value) && (value as number) >= 0)) throw new Error('生成上下文统计格式无效')
+  return { chapter_index: meta.chapter_index as number, chapter_id: meta.chapter_id as string | null, context_stats: { context_lines: contextStats.context_lines as number, scene_card_lines: contextStats.scene_card_lines as number } }
+}
 export function reduceGenerationEvent(
   event: GenerateStreamEvent,
   state: GenerationUIState,
@@ -44,7 +53,7 @@ export function reduceGenerationEvent(
     if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
       throw new Error('生成上下文元数据格式无效')
     }
-    return { meta: parsed as Record<string, unknown> }
+    return { meta: parseGenerationContextMeta(parsed) }
   }
 
   if (event.event === 'retry') {

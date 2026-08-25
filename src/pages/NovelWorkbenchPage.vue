@@ -11,7 +11,7 @@ import {
   streamGenerateChapter,
   updateNovel,
 } from '@/utils/api'
-import type { ChapterItem, GenerateChapterRequest, PreviewContextResponse, PreviewContextParams } from '@/utils/api'
+import type { ChapterItem, GenerateChapterRequest, GenerationContextMeta, PreviewContextResponse, PreviewContextParams } from '@/utils/api'
 import {
   reduceGenerationEvent,
   reduceGenerationTerminal,
@@ -36,8 +36,7 @@ const preview = ref<PreviewContextResponse | null>(null)
 const previewLoading = ref(false)
 const previewError = ref<string | null>(null)
 
-const meta = ref<Record<string, unknown> | null>(null)
-const metaText = computed(() => (meta.value ? JSON.stringify(meta.value, null, 2) : ''))
+const meta = ref<GenerationContextMeta | null>(null)
 const output = ref('')
 const generationState = ref<GenerationUIState>('idle')
 const generationPreparing = ref(false)
@@ -845,11 +844,13 @@ onMounted(() => {
                 class="rounded-md border border-zinc-700/60 bg-zinc-900/20 p-3"
               >
                 <div class="text-xs font-semibold text-zinc-200">
-                  生成元信息
+                  生成上下文摘要
                 </div>
-                <pre
-                  class="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-words text-[11px] text-zinc-300"
-                >{{ metaText }}</pre>
+                <div class="mt-2 grid gap-2 text-[11px] text-zinc-300 sm:grid-cols-3">
+                  <span>目标：第 {{ meta.chapter_index }} 章</span>
+                  <span>{{ meta.chapter_id ? `已有章节 ${meta.chapter_id}` : '新建章节' }}</span>
+                  <span>上下文 {{ meta.context_stats.context_lines }} 行 / 场景卡 {{ meta.context_stats.scene_card_lines }} 行</span>
+                </div>
               </div>
 
               <div>

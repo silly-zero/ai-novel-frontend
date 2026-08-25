@@ -91,6 +91,14 @@ export type PreviewContextParams = {
   manual_context?: string
 }
 
+export type GenerationContextMeta = {
+  chapter_index: number
+  chapter_id: string | null
+  context_stats: {
+    context_lines: number
+    scene_card_lines: number
+  }
+}
 export type GenerateChapterRequest = {
   novel_id: number
   chapter_id?: number
@@ -104,6 +112,7 @@ export type GenerateChapterRequest = {
   editor_notes?: string
   manual_context?: string
 }
+
 export type GetNovelResponse = {
   item: NovelDetail
   chapters: ChapterItem[]
