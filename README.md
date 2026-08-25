@@ -17,7 +17,7 @@ pnpm install
 pnpm dev
 ```
 
-开发服务器默认地址为 `http://localhost:5173`。Vite 会将相对 `/api` 请求代理到后端默认地址 `http://127.0.0.1:8081`。如需直接访问其他 API 地址，可设置 `VITE_API_BASE_URL`；未设置时使用上述相对路径和代理。
+开发服务器默认地址为 `http://localhost:5173`。Vite 会将相对 `/api` 请求代理到后端默认地址 `http://127.0.0.1:8081`。如需直接访问其他 API 地址，可设置 `VITE_API_BASE_URL`；未设置时使用上述相对路径和代理。`VITE_*` 值会编译进浏览器，只能用于非敏感公开配置，不要放 API key、数据库密码或其他密钥。
 
 ## 页面路由
 
