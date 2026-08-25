@@ -107,6 +107,14 @@ describe('previewContext', () => {
     expect(init.signal).toBe(signal)
     expect(JSON.parse(init.body)).toEqual({ novel_id: 7, chapter_index: 2, idea: '想法', editor_notes: '备注' })
   })
+
+  it('omits undefined optional fields from preview JSON', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    await previewContext({ novel_id: '7', chapter_index: undefined, idea: undefined }, new AbortController().signal)
+    const [, init] = fetchMock.mock.calls[0]
+    expect(JSON.parse(init.body)).toEqual({ novel_id: 7 })
+  })
 })
 
 describe('streamGenerateChapter', () => {
