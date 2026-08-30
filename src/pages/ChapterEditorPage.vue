@@ -235,7 +235,7 @@ onUnmounted(() => {
                 派生任务
               </div>
               <div class="mt-1 text-xs text-zinc-400">
-                记忆、角色与世界设定处理状态
+                记忆、角色与世界设定处理状态；正文已保存，辅助数据失败时可以重试
               </div>
             </div>
             <div class="flex flex-wrap items-center gap-2">

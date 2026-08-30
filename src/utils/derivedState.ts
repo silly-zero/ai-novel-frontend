@@ -7,7 +7,7 @@ export function derivedStatusLabel(status: DerivedStatus): string {
     case 'Pending':
       return '派生处理中'
     case 'Failed':
-      return '派生失败'
+      return '辅助数据未完成'
   }
 }
 

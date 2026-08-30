@@ -10,7 +10,7 @@ describe('derived state labels', () => {
   it('maps chapter derived states', () => {
     expect(derivedStatusLabel('Ready')).toBe('派生已就绪')
     expect(derivedStatusLabel('Pending')).toBe('派生处理中')
-    expect(derivedStatusLabel('Failed')).toBe('派生失败')
+    expect(derivedStatusLabel('Failed')).toBe('辅助数据未完成')
     expect(derivedStatusClass('Failed')).toContain('red')
   })
 
