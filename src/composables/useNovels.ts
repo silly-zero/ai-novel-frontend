@@ -1,10 +1,11 @@
 import { onMounted, onUnmounted, ref } from 'vue'
-import { listNovels, type NovelSummary } from '@/utils/api'
+import { deleteNovel, listNovels, type NovelSummary } from '@/utils/api'
 
 export function useNovels() {
   const items = ref<NovelSummary[]>([])
   const isLoading = ref(false)
   const errorMessage = ref<string | null>(null)
+  const deletingId = ref<string | null>(null)
 
   const abort = new AbortController()
 
@@ -21,6 +22,20 @@ export function useNovels() {
     }
   }
 
+  async function remove(id: string) {
+    if (deletingId.value) return
+    deletingId.value = id
+    errorMessage.value = null
+    try {
+      await deleteNovel(id, abort.signal)
+      items.value = items.value.filter((item) => item.id !== id)
+    } catch (err) {
+      errorMessage.value = err instanceof Error ? err.message : '删除失败'
+    } finally {
+      deletingId.value = null
+    }
+  }
+
   onMounted(() => {
     void refresh()
   })
@@ -33,7 +48,9 @@ export function useNovels() {
     items,
     isLoading,
     errorMessage,
+    deletingId,
     refresh,
+    remove,
   }
 }
 

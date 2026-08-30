@@ -3,7 +3,7 @@ import NovelListItem from '@/components/NovelListItem.vue'
 import TopNav from '@/components/TopNav.vue'
 import { useNovels } from '@/composables/useNovels'
 
-const { items, isLoading, errorMessage, refresh } = useNovels()
+const { items, isLoading, errorMessage, deletingId, refresh, remove } = useNovels()
 </script>
 
 <template>
@@ -92,6 +92,8 @@ const { items, isLoading, errorMessage, refresh } = useNovels()
           v-for="n in items"
           :key="n.id"
           :item="n"
+          :deleting="deletingId === n.id"
+          @remove="remove(n.id)"
         />
       </div>
     </div>

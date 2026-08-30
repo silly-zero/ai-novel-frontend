@@ -1,8 +1,15 @@
 <script setup lang="ts">
-import { BookOpen, ChevronRight } from 'lucide-vue-next'
+import { BookOpen, ChevronRight, Trash2 } from 'lucide-vue-next'
 import type { NovelSummary } from '@/utils/api'
 
-defineProps<{ item: NovelSummary }>()
+const props = defineProps<{ item: NovelSummary; deleting?: boolean }>()
+const emit = defineEmits<{ remove: [] }>()
+
+function requestRemove() {
+  if (props.deleting) return
+  if (!window.confirm(`确认删除小说「${props.item.title}」？删除后不可恢复。`)) return
+  emit('remove')
+}
 </script>
 
 <template>
@@ -55,6 +62,15 @@ defineProps<{ item: NovelSummary }>()
         进入创作
         <ChevronRight class="h-4 w-4" />
       </router-link>
+      <button
+        class="inline-flex items-center justify-center gap-1 rounded-md border border-red-500/40 px-3 py-2 text-xs font-semibold text-red-200 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+        type="button"
+        :disabled="deleting"
+        @click="requestRemove"
+      >
+        <Trash2 class="h-3.5 w-3.5" />
+        {{ deleting ? '删除中…' : '删除' }}
+      </button>
     </div>
   </div>
 </template>

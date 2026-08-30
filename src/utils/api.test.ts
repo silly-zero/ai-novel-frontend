@@ -3,6 +3,7 @@ import {
   APIResponseError,
   RetryChapterDerivedError,
   listChapters,
+  deleteNovel,
   previewContext,
   retryChapterDerived,
   streamGenerateChapter,
@@ -41,6 +42,33 @@ describe('listChapters', () => {
       '/api/v1/novels/novel%2F1/chapters?limit=200&offset=400',
       expect.objectContaining({ method: 'GET' }),
     )
+  })
+})
+
+describe('deleteNovel', () => {
+  it('requires server confirmation and accepts no-content success', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(deleteNovel('novel/1')).resolves.toBeUndefined()
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/novels/novel%2F1', expect.objectContaining({
+      method: 'DELETE',
+      body: '{"confirm":true}',
+      headers: expect.objectContaining({
+        'Content-Type': 'application/json',
+      }),
+    }))
+  })
+
+  it('raises a typed error when deletion fails', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('not allowed', {
+      status: 409,
+      statusText: 'Conflict',
+    })))
+
+    const error = await deleteNovel('1').catch(value => value)
+    expect(error).toBeInstanceOf(APIResponseError)
+    expect((error as APIResponseError).status).toBe(409)
   })
 })
 

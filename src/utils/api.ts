@@ -269,18 +269,20 @@ async function apiJson<T>(method: 'POST' | 'PUT' | 'PATCH', path: string, body: 
   return (await res.json()) as T
 }
 
-async function apiDelete(path: string, signal?: AbortSignal) {
+async function apiDelete(path: string, body: unknown = {}, signal?: AbortSignal) {
   const res = await fetch(withBaseUrl(path), {
     method: 'DELETE',
     headers: {
       Accept: 'application/json',
+      'Content-Type': 'application/json',
     },
+    body: JSON.stringify(body),
     signal,
   })
   if (!res.ok) {
     const text = await res.text().catch(() => '')
     const message = text ? `${res.status} ${res.statusText}: ${text}` : `${res.status} ${res.statusText}`
-    throw new Error(message)
+    throw new APIResponseError(message, res.status)
   }
 }
 
@@ -290,6 +292,10 @@ export function listNovels(signal?: AbortSignal) {
 
 export function createNovel(payload: CreateNovelRequest, signal?: AbortSignal) {
   return apiJson<CreateNovelResponse>('POST', '/api/v1/novels', payload, signal)
+}
+
+export function deleteNovel(id: string, signal?: AbortSignal) {
+  return apiDelete(`/api/v1/novels/${encodeURIComponent(id)}`, { confirm: true }, signal)
 }
 
 export function getNovel(id: string, signal?: AbortSignal) {
@@ -340,7 +346,7 @@ export function updateChapter(id: string, payload: UpdateChapterRequest, signal?
 }
 
 export function deleteChapter(id: string, signal?: AbortSignal) {
-  return apiDelete(`/api/v1/chapters/${encodeURIComponent(id)}`, signal)
+  return apiDelete(`/api/v1/chapters/${encodeURIComponent(id)}`, {}, signal)
 }
 
 export async function retryChapterDerived(id: string, signal?: AbortSignal): Promise<ChapterDerivedSnapshot> {
