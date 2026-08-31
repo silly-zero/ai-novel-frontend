@@ -24,8 +24,8 @@ const router = useRouter()
 const novelId = computed(() => String(route.params.novelId ?? ''))
 
 const chapterIndex = ref(1)
-const outlineStart = ref(1)
-const outlineEnd = ref(10)
+const outlineStart = ref<number | undefined>(undefined)
+const outlineEnd = ref<number | undefined>(undefined)
 const idea = ref('')
 const outline = ref('')
 const editorNotes = ref('')
@@ -117,8 +117,11 @@ function buildOutlineParams(): PreviewContextParams {
     novel_id: novelId.value,
     chapter_index: 1,
     idea: idea.value.trim() || undefined,
-    outline_start: Math.max(1, Number(outlineStart.value || 1)),
-    outline_end: Math.max(1, Number(outlineEnd.value || 10)),
+    outline_mode: outline.value.trim() ? 'extend' : 'full',
+  }
+  if (outlineStart.value !== undefined && outlineEnd.value !== undefined) {
+    base.outline_start = outlineStart.value
+    base.outline_end = outlineEnd.value
   }
   return base
 }
@@ -170,8 +173,7 @@ async function onExtendOutline() {
     const params = buildOutlineParams()
     if (!params.novel_id) throw new Error('novel_id 缺失')
     if (!idea.value.trim() && !lastSavedIdea.value.trim()) throw new Error('需要先填写 Idea 才能生成/续写大纲')
-    if (!params.outline_start || !params.outline_end) throw new Error('请填写大纲生成范围')
-    if (params.outline_end < params.outline_start) throw new Error('结束章节不能小于起始章节')
+    if (params.outline_start !== undefined && params.outline_end === undefined || params.outline_start === undefined && params.outline_end !== undefined) throw new Error('参考章节范围需要同时填写起始和结束章节')
     const res = await previewContext(params, previewAbort.signal)
     preview.value = res
     outline.value = res.full_outline
@@ -453,10 +455,10 @@ onMounted(() => {
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div>
             <div class="text-sm font-semibold text-zinc-100">
-              全书大纲
+              全书主线与情节阶段
             </div>
             <div class="mt-1 text-xs text-zinc-400">
-              建议先生成/编辑大纲，再生成章节
+              建议先生成/编辑主线与情节阶段，再生成章节
             </div>
           </div>
           <div class="flex flex-wrap items-center gap-2">
@@ -509,7 +511,7 @@ onMounted(() => {
               placeholder="一句话或一段话描述故事核心设定"
             />
             <div class="mt-3 flex items-center gap-2">
-              <span class="text-xs text-zinc-400">大纲生成范围：</span>
+              <span class="text-xs text-zinc-400">参考章节范围（可选）：</span>
               <div class="flex items-center gap-1 text-xs">
                 <span class="text-zinc-400">第</span>
                 <input
@@ -525,7 +527,7 @@ onMounted(() => {
                   min="1"
                   class="w-14 rounded border border-zinc-700/60 bg-zinc-900/30 px-1 py-1 text-center text-zinc-100 outline-none focus:border-blue-400/70"
                 >
-                <span class="text-zinc-400">章</span>
+                <span class="text-zinc-400">章（只用于估计阶段跨度，不要求一章一个事件）</span>
               </div>
               <button
                 class="rounded-md border border-blue-400/70 bg-blue-500/20 px-3 py-2 text-xs font-semibold text-blue-100 transition hover:bg-blue-500/30 disabled:cursor-not-allowed disabled:opacity-60"
@@ -540,7 +542,7 @@ onMounted(() => {
 
           <div>
             <div class="text-xs font-semibold text-zinc-200">
-              Full Outline（可编辑）
+              Full Outline（主线与情节阶段，可编辑）
             </div>
             <textarea
               v-model="outline"

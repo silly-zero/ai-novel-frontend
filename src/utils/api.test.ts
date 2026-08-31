@@ -128,12 +128,32 @@ describe('previewContext', () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ full_outline: '大纲' }), { status: 200 }))
     vi.stubGlobal('fetch', fetchMock)
     const signal = new AbortController().signal
-    await previewContext({ novel_id: '7', chapter_index: 2, idea: '想法', editor_notes: '备注' }, signal)
+    await previewContext({ novel_id: '7', chapter_index: 2, idea: '想法', editor_notes: '备注', outline_mode: 'full' }, signal)
     const [url, init] = fetchMock.mock.calls[0]
     expect(url).toBe('/api/v1/novel/preview-context')
     expect(init.method).toBe('POST')
     expect(init.signal).toBe(signal)
-    expect(JSON.parse(init.body)).toEqual({ novel_id: 7, chapter_index: 2, idea: '想法', editor_notes: '备注' })
+    expect(JSON.parse(init.body)).toEqual({ novel_id: 7, chapter_index: 2, idea: '想法', outline_mode: 'full', editor_notes: '备注' })
+  })
+
+  it('serializes an optional outline reference range and mode', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    await previewContext({ novel_id: '7', outline_mode: 'extend', outline_start: 4, outline_end: 8 }, new AbortController().signal)
+    const [, init] = fetchMock.mock.calls[0]
+    expect(JSON.parse(init.body)).toEqual({ novel_id: 7, outline_mode: 'extend', outline_start: 4, outline_end: 8 })
+  })
+
+  it('parses safe JSON error codes', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ error_code: 'provider_busy', message: '模型服务繁忙' }), {
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: { 'Content-Type': 'application/json' },
+    })))
+    const error = await previewContext({ novel_id: '7' }, new AbortController().signal).catch(value => value)
+    expect(error).toBeInstanceOf(APIResponseError)
+    expect((error as APIResponseError).code).toBe('provider_busy')
+    expect((error as Error).message).toBe('模型服务繁忙')
   })
 
   it('omits undefined optional fields from preview JSON', async () => {

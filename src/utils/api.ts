@@ -85,6 +85,7 @@ export type PreviewContextParams = {
   outline?: string
   idea?: string
   existing_outline?: string
+  outline_mode?: 'full' | 'extend'
   outline_start?: number
   outline_end?: number
   editor_notes?: string
@@ -203,12 +204,16 @@ async function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> {
 }
 
 export class APIResponseError extends Error {
+  readonly code?: string
+
   constructor(
     message: string,
     readonly status: number,
+    code?: string,
   ) {
     super(message)
     this.name = 'APIResponseError'
+    this.code = code
   }
 }
 
@@ -265,8 +270,16 @@ async function apiJson<T>(method: 'POST' | 'PUT' | 'PATCH', path: string, body: 
   })
   if (!res.ok) {
     const text = await res.text().catch(() => '')
-    const message = text ? `${res.status} ${res.statusText}: ${text}` : `${res.status} ${res.statusText}`
-    throw new APIResponseError(message, res.status)
+    let code: string | undefined
+    let message = text ? `${res.status} ${res.statusText}: ${text}` : `${res.status} ${res.statusText}`
+    try {
+      const parsed = JSON.parse(text) as { error_code?: unknown; message?: unknown }
+      if (typeof parsed.error_code === 'string') code = parsed.error_code
+      if (typeof parsed.message === 'string' && parsed.message.trim()) message = parsed.message
+    } catch {
+      // Keep the bounded HTTP fallback for non-JSON responses.
+    }
+    throw new APIResponseError(message, res.status, code)
   }
   return (await res.json()) as T
 }
@@ -385,6 +398,7 @@ export function previewContext(params: PreviewContextParams, signal?: AbortSigna
     outline: params.outline,
     idea: params.idea,
     existing_outline: params.existing_outline,
+    outline_mode: params.outline_mode,
     outline_start: params.outline_start,
     outline_end: params.outline_end,
     editor_notes: params.editor_notes,
