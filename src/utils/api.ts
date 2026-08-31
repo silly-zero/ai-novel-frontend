@@ -217,6 +217,13 @@ export class APIResponseError extends Error {
   }
 }
 
+export class APITimeoutError extends Error {
+  constructor(message = '请求超时，请稍后重试') {
+    super(message)
+    this.name = 'APITimeoutError'
+  }
+}
+
 export class RetryChapterDerivedError extends APIResponseError {
   constructor(
     message: string,
@@ -258,30 +265,70 @@ function isChapterDerivedSnapshot(value: unknown): value is ChapterDerivedSnapsh
     && typeof snapshot.error === 'string'
 }
 
-async function apiJson<T>(method: 'POST' | 'PUT' | 'PATCH', path: string, body: unknown, signal?: AbortSignal): Promise<T> {
-  const res = await fetch(withBaseUrl(path), {
-    method,
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body ?? {}),
-    signal,
-  })
-  if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    let code: string | undefined
-    let message = text ? `${res.status} ${res.statusText}: ${text}` : `${res.status} ${res.statusText}`
-    try {
-      const parsed = JSON.parse(text) as { error_code?: unknown; message?: unknown }
-      if (typeof parsed.error_code === 'string') code = parsed.error_code
-      if (typeof parsed.message === 'string' && parsed.message.trim()) message = parsed.message
-    } catch {
-      // Keep the bounded HTTP fallback for non-JSON responses.
-    }
-    throw new APIResponseError(message, res.status, code)
+async function apiJson<T>(
+  method: 'POST' | 'PUT' | 'PATCH',
+  path: string,
+  body: unknown,
+  signal?: AbortSignal,
+  timeoutMs?: number,
+): Promise<T> {
+  const requestController = new AbortController()
+  let timedOut = false
+  const forwardAbort = () => requestController.abort(signal?.reason)
+  if (signal?.aborted) {
+    forwardAbort()
+  } else {
+    signal?.addEventListener('abort', forwardAbort, { once: true })
   }
-  return (await res.json()) as T
+  const timeout = timeoutMs === undefined
+    ? undefined
+    : setTimeout(() => {
+      timedOut = true
+      requestController.abort(new DOMException('请求超时', 'TimeoutError'))
+    }, timeoutMs)
+
+  const request = (async () => {
+    const res = await fetch(withBaseUrl(path), {
+      method,
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body ?? {}),
+      signal: requestController.signal,
+    })
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      let code: string | undefined
+      let message = text ? `${res.status} ${res.statusText}: ${text}` : `${res.status} ${res.statusText}`
+      try {
+        const parsed = JSON.parse(text) as { error_code?: unknown; message?: unknown }
+        if (typeof parsed.error_code === 'string') code = parsed.error_code
+        if (typeof parsed.message === 'string' && parsed.message.trim()) message = parsed.message
+      } catch {
+        // Keep the bounded HTTP fallback for non-JSON responses.
+      }
+      throw new APIResponseError(message, res.status, code)
+    }
+    return (await res.json()) as T
+  })()
+  void request.catch(() => undefined)
+
+  let deadlineTimer: ReturnType<typeof setTimeout> | undefined
+  try {
+    if (timeoutMs === undefined) return await request
+    const deadline = new Promise<never>((_, reject) => {
+      deadlineTimer = setTimeout(() => reject(new APITimeoutError()), timeoutMs)
+    })
+    return await Promise.race([request, deadline])
+  } catch (err) {
+    if (timedOut) throw new APITimeoutError()
+    throw err
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout)
+    if (deadlineTimer !== undefined) clearTimeout(deadlineTimer)
+    signal?.removeEventListener('abort', forwardAbort)
+  }
 }
 
 async function apiDelete(path: string, body: unknown = {}, signal?: AbortSignal) {
@@ -317,12 +364,16 @@ export function getNovel(id: string, signal?: AbortSignal) {
   return apiGet<GetNovelResponse>(`/api/v1/novels/${encodeURIComponent(id)}`, signal)
 }
 
+const PREVIEW_CONTEXT_TIMEOUT_MS = 5 * 60 * 1000
+const NOVEL_UPDATE_TIMEOUT_MS = 30 * 1000
+
 export function updateNovel(id: string, payload: UpdateNovelRequest, signal?: AbortSignal) {
   return apiJson<UpdateNovelResponse>(
     'PUT',
     `/api/v1/novels/${encodeURIComponent(id)}`,
     apiDeleteEmpty({ ...payload }),
     signal,
+    NOVEL_UPDATE_TIMEOUT_MS,
   )
 }
 
@@ -403,7 +454,7 @@ export function previewContext(params: PreviewContextParams, signal?: AbortSigna
     outline_end: params.outline_end,
     editor_notes: params.editor_notes,
     manual_context: params.manual_context,
-  }, signal)
+  }, signal, PREVIEW_CONTEXT_TIMEOUT_MS)
 }
 
 export type GenerateStreamEvent = {

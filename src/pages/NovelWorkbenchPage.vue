@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import TopNav from '@/components/TopNav.vue'
 import {
   APIResponseError,
+  APITimeoutError,
   cancelGeneration,
   getNovel,
   listChapters,
@@ -36,6 +37,7 @@ const eventChapterCount = ref<0 | 2 | 3>(0)
 const preview = ref<PreviewContextResponse | null>(null)
 const previewLoading = ref(false)
 const previewError = ref<string | null>(null)
+const previewStatus = ref<string | null>(null)
 
 const meta = ref<GenerationContextMeta | null>(null)
 const output = ref('')
@@ -65,6 +67,10 @@ const persistedMessage = ref<string | null>(null)
 const savedChapterId = ref<string | null>(null)
 
 const previewAbort = new AbortController()
+const previewRequestController = ref<AbortController | null>(null)
+const previewSaveController = ref<AbortController | null>(null)
+let previewRequestId = 0
+let previewSaveRequestId = 0
 const generateAbort = ref<AbortController | null>(null)
 const generationId = ref<string | null>(null)
 const generationNovelId = ref<string | null>(null)
@@ -127,61 +133,115 @@ function buildOutlineParams(): PreviewContextParams {
 }
 
 async function savePreviewOutline() {
-  if (!preview.value?.full_outline || isGenerationActive.value) return
+  const outlineSnapshot = preview.value?.full_outline
+  if (!outlineSnapshot || isGenerationActive.value || isOutlineSaving.value) return
+  const requestId = ++previewSaveRequestId
+  previewSaveController.value?.abort()
+  const controller = new AbortController()
+  previewSaveController.value = controller
   isOutlineSaving.value = true
   outlineSaveMessage.value = null
   try {
-    await updateNovel(novelId.value, { outline: preview.value.full_outline })
-    outline.value = preview.value.full_outline
-    lastSavedOutline.value = preview.value.full_outline
+    await updateNovel(novelId.value, { outline: outlineSnapshot }, controller.signal)
+    if (requestId !== previewSaveRequestId || previewSaveController.value !== controller) return
+    outline.value = outlineSnapshot
+    lastSavedOutline.value = outlineSnapshot
     outlineSaveMessage.value = '大纲已从预览同步保存'
     setTimeout(() => {
-      outlineSaveMessage.value = null
+      if (requestId === previewSaveRequestId && previewSaveController.value === controller) {
+        outlineSaveMessage.value = null
+      }
     }, 3000)
   } catch (err: unknown) {
+    if (requestId !== previewSaveRequestId || previewSaveController.value !== controller) return
     outlineSaveMessage.value = (err as Error).message || '保存大纲失败'
   } finally {
-    isOutlineSaving.value = false
+    if (requestId === previewSaveRequestId && previewSaveController.value === controller) {
+      previewSaveController.value = null
+      isOutlineSaving.value = false
+    }
   }
 }
 
 async function onPreview() {
   if (previewLoading.value) return
+  const requestId = ++previewRequestId
+  previewRequestController.value?.abort()
+  const controller = new AbortController()
+  previewRequestController.value = controller
   previewLoading.value = true
   previewError.value = null
+  previewStatus.value = '正在生成上下文预览，请稍候...'
   preview.value = null
   try {
     const params = buildChapterParams()
     if (!params.novel_id) throw new Error('novel_id 缺失')
     if (!idea.value.trim() && !outline.value.trim()) throw new Error('需要先填写 Idea 或保存全书大纲')
-    preview.value = await previewContext(params, previewAbort.signal)
+    const res = await previewContext(params, controller.signal)
+    if (requestId !== previewRequestId || previewRequestController.value !== controller) return
+    preview.value = res
+    previewStatus.value = '上下文预览生成成功'
   } catch (err) {
-    previewError.value = err instanceof Error ? err.message : '预览失败'
+    if (requestId !== previewRequestId || previewRequestController.value !== controller) return
+    if (err instanceof APITimeoutError) {
+      previewError.value = '生成超过 5 分钟仍未完成，请稍后重试'
+      previewStatus.value = null
+    } else if (err instanceof DOMException && err.name === 'AbortError') {
+      previewStatus.value = '预览已取消，可以重新生成'
+    } else {
+      previewError.value = err instanceof Error ? err.message : '预览失败'
+      previewStatus.value = null
+    }
   } finally {
-    previewLoading.value = false
+    if (requestId === previewRequestId && previewRequestController.value === controller) {
+      previewRequestController.value = null
+      previewLoading.value = false
+    }
   }
 }
 
 async function onExtendOutline() {
   if (previewLoading.value) return
+  const requestId = ++previewRequestId
+  previewRequestController.value?.abort()
+  const controller = new AbortController()
+  previewRequestController.value = controller
   previewLoading.value = true
   previewError.value = null
+  previewStatus.value = '正在生成大纲，请稍候...'
+  preview.value = null
   try {
-    if (outlineDirty.value) {
-      await saveOutline()
+    if (outlineDirty.value && !(await saveOutline(controller.signal))) {
+      previewError.value = '大纲保存失败，未开始生成/续写'
+      previewStatus.value = null
+      return
     }
     const params = buildOutlineParams()
     if (!params.novel_id) throw new Error('novel_id 缺失')
     if (!idea.value.trim() && !lastSavedIdea.value.trim()) throw new Error('需要先填写 Idea 才能生成/续写大纲')
     if (params.outline_start !== undefined && params.outline_end === undefined || params.outline_start === undefined && params.outline_end !== undefined) throw new Error('参考章节范围需要同时填写起始和结束章节')
-    const res = await previewContext(params, previewAbort.signal)
+    const res = await previewContext(params, controller.signal)
+    if (requestId !== previewRequestId || previewRequestController.value !== controller) return
     preview.value = res
     outline.value = res.full_outline
+    previewStatus.value = '大纲生成成功，结果已回填右侧编辑框；尚未保存'
     outlineSaveMessage.value = '已生成/续写大纲（尚未保存），请点击“保存大纲”写入小说'
   } catch (err) {
-    previewError.value = err instanceof Error ? err.message : '生成大纲失败'
+    if (requestId !== previewRequestId || previewRequestController.value !== controller) return
+    if (err instanceof APITimeoutError) {
+      previewError.value = '生成大纲超过 5 分钟仍未完成，请稍后重试'
+      previewStatus.value = null
+    } else if (err instanceof DOMException && err.name === 'AbortError') {
+      previewStatus.value = '大纲生成已取消，可以重新生成'
+    } else {
+      previewError.value = err instanceof Error ? err.message : '生成大纲失败'
+      previewStatus.value = null
+    }
   } finally {
-    previewLoading.value = false
+    if (requestId === previewRequestId && previewRequestController.value === controller) {
+      previewRequestController.value = null
+      previewLoading.value = false
+    }
   }
 }
 
@@ -258,8 +318,8 @@ async function loadNovel() {
   }
 }
 
-async function saveOutline() {
-  if (isOutlineSaving.value || isGenerationActive.value) return
+async function saveOutline(signal: AbortSignal = previewAbort.signal): Promise<boolean> {
+  if (isOutlineSaving.value || isGenerationActive.value) return false
   isOutlineSaving.value = true
   outlineSaveMessage.value = null
   try {
@@ -269,13 +329,15 @@ async function saveOutline() {
         idea: idea.value,
         outline: outline.value,
       },
-      previewAbort.signal,
+      signal,
     )
     lastSavedIdea.value = res.item.idea ?? ''
     lastSavedOutline.value = res.item.outline ?? ''
     outlineSaveMessage.value = `已保存：${new Date(res.item.updated_at).toLocaleString()}`
+    return true
   } catch (err) {
     outlineSaveMessage.value = err instanceof Error ? err.message : '保存失败'
+    return false
   } finally {
     isOutlineSaving.value = false
   }
@@ -428,6 +490,8 @@ async function onGenerate() {
 
 onUnmounted(() => {
   previewAbort.abort()
+  previewRequestController.value?.abort()
+  previewSaveController.value?.abort()
   abortGenerationTransport()
 })
 
@@ -472,7 +536,7 @@ onMounted(() => {
               class="rounded-md bg-blue-500 px-3 py-2 text-xs font-semibold text-white transition hover:bg-blue-400 disabled:cursor-not-allowed disabled:opacity-60"
               :disabled="isOutlineSaving || !outlineDirty || isGenerationActive"
               type="button"
-              @click="saveOutline"
+              @click="() => { void saveOutline() }"
             >
               {{ isOutlineSaving ? '保存中...' : '保存大纲' }}
             </button>
@@ -531,7 +595,7 @@ onMounted(() => {
               </div>
               <button
                 class="rounded-md border border-blue-400/70 bg-blue-500/20 px-3 py-2 text-xs font-semibold text-blue-100 transition hover:bg-blue-500/30 disabled:cursor-not-allowed disabled:opacity-60"
-                :disabled="previewLoading"
+                :disabled="previewLoading || isOutlineSaving"
                 type="button"
                 @click="onExtendOutline"
               >
@@ -853,6 +917,12 @@ onMounted(() => {
             </div>
 
             <div
+              v-if="previewStatus"
+              class="mt-3 rounded-md border border-blue-400/20 bg-blue-500/10 p-3 text-xs text-blue-100"
+            >
+              {{ previewStatus }}
+            </div>
+            <div
               v-if="previewError"
               class="mt-3 rounded-md border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200"
             >
@@ -860,14 +930,14 @@ onMounted(() => {
             </div>
 
             <div
-              v-else-if="!preview"
+              v-else-if="!preview && !previewLoading"
               class="mt-3 text-xs text-zinc-400"
             >
               点击“预览上下文”生成场景卡与共创上下文。
             </div>
 
             <div
-              v-else
+              v-else-if="preview"
               class="mt-4 space-y-4"
             >
               <div

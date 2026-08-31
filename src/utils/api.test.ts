@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  APITimeoutError,
   APIResponseError,
   RetryChapterDerivedError,
   listChapters,
@@ -25,6 +26,7 @@ function sseResponse(chunks: string[], status = 200) {
 }
 
 afterEach(() => {
+  vi.useRealTimers()
   vi.unstubAllGlobals()
 })
 
@@ -124,6 +126,45 @@ describe('retryChapterDerived', () => {
 })
 
 describe('previewContext', () => {
+  it('returns the complete backend response after a successful request', async () => {
+    const response = {
+      novel_id: '7',
+      chapter_index: 2,
+      full_outline: '新大纲',
+      outline: '本章大纲',
+      scene_card: '场景卡',
+      context: '上下文',
+      editor_notes: '备注',
+      manual_context: '手工上下文',
+    }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(response), { status: 200 })))
+
+    await expect(previewContext({ novel_id: '7', chapter_index: 2 }, new AbortController().signal)).resolves.toEqual(response)
+  })
+
+  it('rejects when a successful response contains invalid JSON', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{', { status: 200 })))
+
+    await expect(previewContext({ novel_id: '7' }, new AbortController().signal)).rejects.toThrow()
+  })
+
+  it('aborts a response body that does not finish before the timeout', async () => {
+    vi.useFakeTimers()
+    const fetchMock = vi.fn().mockResolvedValue(new Response(new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode('{'))
+      },
+    }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const pending = previewContext({ novel_id: '7' }, new AbortController().signal)
+    const rejection = expect(pending).rejects.toBeInstanceOf(APITimeoutError)
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000)
+    await rejection
+    expect(fetchMock.mock.calls[0][1].signal.aborted).toBe(true)
+    vi.useRealTimers()
+  })
+
   it('posts JSON without putting preview fields in the URL', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ full_outline: '大纲' }), { status: 200 }))
     vi.stubGlobal('fetch', fetchMock)
@@ -132,7 +173,7 @@ describe('previewContext', () => {
     const [url, init] = fetchMock.mock.calls[0]
     expect(url).toBe('/api/v1/novel/preview-context')
     expect(init.method).toBe('POST')
-    expect(init.signal).toBe(signal)
+    expect(init.signal).not.toBe(signal)
     expect(JSON.parse(init.body)).toEqual({ novel_id: 7, chapter_index: 2, idea: '想法', outline_mode: 'full', editor_notes: '备注' })
   })
 
