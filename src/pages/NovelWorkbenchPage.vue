@@ -31,6 +31,7 @@ const outline = ref('')
 const editorNotes = ref('')
 const manualContext = ref('')
 const pacingPreset = ref<'normal' | 'slow-burn' | 'cliffhanger'>('slow-burn')
+const eventChapterCount = ref<0 | 2 | 3>(0)
 
 const preview = ref<PreviewContextResponse | null>(null)
 const previewLoading = ref(false)
@@ -99,8 +100,9 @@ function buildPersistedChapterParams(chapterId: string | undefined, targetIndex:
   }
   return {
     novel_id: parsedNovelId,
-    chapter_id: parsedChapterId,
+    chapter_id: eventChapterCount.value ? undefined : parsedChapterId,
     chapter_index: targetIndex,
+    event_chapter_count: eventChapterCount.value || undefined,
     persist: true,
     outline: outline.value.trim() || undefined,
     idea: idea.value.trim() || undefined,
@@ -346,7 +348,12 @@ async function onGenerate() {
       generateError.value = err instanceof Error ? err.message : '生成目标无效'
       return
     }
-    if (target.overwrites && !window.confirm('确认覆盖该章节内容？')) return
+    if (target.overwrites || eventChapterCount.value > 0) {
+      const message = eventChapterCount.value > 0
+        ? `确认连续生成并覆盖第 ${target.chapterIndex}-${target.chapterIndex + eventChapterCount.value - 1} 章？`
+        : '确认覆盖该章节内容？'
+      if (!window.confirm(message)) return
+    }
     params = buildPersistedChapterParams(target.chapterId, target.chapterIndex)
   } finally {
     generationPreparing.value = false
@@ -622,6 +629,28 @@ onMounted(() => {
                 >
                   普通
                 </button>
+              </div>
+            </div>
+
+            <div class="mt-4">
+              <div class="text-xs font-semibold text-zinc-200">
+                生成方式
+              </div>
+              <div class="mt-2 flex flex-wrap gap-2">
+                <button
+                  v-for="option in [{ value: 0, label: '单章生成' }, { value: 2, label: '连续2章' }, { value: 3, label: '连续3章' }]"
+                  :key="option.value"
+                  class="rounded-md border px-3 py-1.5 text-xs font-semibold transition"
+                  :class="eventChapterCount === option.value ? 'border-blue-400/70 bg-blue-500/20 text-blue-100' : 'border-zinc-700/60 bg-zinc-900/30 text-zinc-200 hover:bg-zinc-900/60'"
+                  :disabled="isGenerationActive"
+                  type="button"
+                  @click="eventChapterCount = option.value as 0 | 2 | 3"
+                >
+                  {{ option.label }}
+                </button>
+              </div>
+              <div class="mt-2 text-[11px] text-zinc-400">
+                连续模式会先生成同一段情节，再按自然转折拆分章节，不会在每章重新开始故事。
               </div>
             </div>
 

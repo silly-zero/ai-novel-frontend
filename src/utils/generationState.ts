@@ -17,13 +17,23 @@ export type GenerationTerminalUpdate = {
   error: string | null
   hasGenerated: boolean
   persistedChapterId: string | null
+  persistedChapterIds: string[]
 }
 
 function parseGenerationContextMeta(value: unknown): GenerationContextMeta {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('生成上下文摘要格式无效')
   const meta = value as Record<string, unknown>
+  if (!Number.isSafeInteger(meta.chapter_index) || (meta.chapter_index as number) <= 0 || (meta.chapter_id !== null && meta.chapter_id !== undefined && (typeof meta.chapter_id !== 'string' || !meta.chapter_id))) throw new Error('生成上下文摘要格式无效')
+  if (Number.isSafeInteger(meta.chapter_count) && (meta.chapter_count as number) >= 2) {
+    return {
+      chapter_index: meta.chapter_index as number,
+      chapter_id: typeof meta.chapter_id === 'string' ? meta.chapter_id : null,
+      chapter_count: meta.chapter_count as number,
+      context_stats: { context_lines: 0, scene_card_lines: 0 },
+    }
+  }
   const stats = meta.context_stats
-  if (!Number.isSafeInteger(meta.chapter_index) || (meta.chapter_index as number) <= 0 || (meta.chapter_id !== null && (typeof meta.chapter_id !== 'string' || !meta.chapter_id)) || !stats || typeof stats !== 'object' || Array.isArray(stats)) throw new Error('生成上下文摘要格式无效')
+  if (!stats || typeof stats !== 'object' || Array.isArray(stats)) throw new Error('生成上下文摘要格式无效')
   const contextStats = stats as Record<string, unknown>
   if (![contextStats.context_lines, contextStats.scene_card_lines].every(value => Number.isSafeInteger(value) && (value as number) >= 0)) throw new Error('生成上下文统计格式无效')
   return { chapter_index: meta.chapter_index as number, chapter_id: meta.chapter_id as string | null, context_stats: { context_lines: contextStats.context_lines as number, scene_card_lines: contextStats.scene_card_lines as number } }
@@ -77,16 +87,23 @@ export function reduceGenerationEvent(
 }
 
 export function reduceGenerationTerminal(terminal: GenerationTerminal): GenerationTerminalUpdate {
-  const persistedChapterId = terminal.persisted === true && terminal.chapter_id ? terminal.chapter_id : null
+  const persistedChapterIds = Array.isArray(terminal.chapter_ids)
+    ? terminal.chapter_ids.filter((id): id is string => typeof id === 'string' && id.length > 0)
+    : terminal.chapter_id
+      ? [terminal.chapter_id]
+      : []
+  const persistedChapterId = persistedChapterIds[0] ?? null
   const success = terminal.status === 'success'
   const persistedError = terminal.status === 'error' && persistedChapterId !== null
   return {
     state: terminal.status,
     status:
-      success && persistedChapterId
-        ? '生成并保存完成'
-        : success
-          ? '生成完成'
+      success && persistedChapterIds.length > 1
+        ? `连续情节已保存 ${persistedChapterIds.length} 章`
+        : success && persistedChapterId
+          ? '生成并保存完成'
+          : success
+            ? '生成完成'
           : persistedError
             ? '正文已保存，派生处理未完成'
             : terminal.status === 'cancelled'
@@ -95,5 +112,6 @@ export function reduceGenerationTerminal(terminal: GenerationTerminal): Generati
     error: terminal.status === 'error' ? terminal.message || '生成失败' : null,
     hasGenerated: success || persistedError,
     persistedChapterId,
+    persistedChapterIds,
   }
 }

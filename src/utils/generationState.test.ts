@@ -80,6 +80,7 @@ describe('reduceGenerationTerminal', () => {
       error: null,
       hasGenerated: true,
       persistedChapterId: '11',
+      persistedChapterIds: ['11'],
     })
   })
 
@@ -96,6 +97,7 @@ describe('reduceGenerationTerminal', () => {
       error: '派生失败',
       hasGenerated: true,
       persistedChapterId: '11',
+      persistedChapterIds: ['11'],
     })
   })
 
@@ -110,6 +112,7 @@ describe('reduceGenerationTerminal', () => {
       error: '模型断流',
       hasGenerated: false,
       persistedChapterId: null,
+      persistedChapterIds: [],
     })
     expect(reduceGenerationTerminal({
       generation_id: 'generation-1',
@@ -120,6 +123,7 @@ describe('reduceGenerationTerminal', () => {
       error: null,
       hasGenerated: false,
       persistedChapterId: null,
+      persistedChapterIds: [],
     })
   })
 })

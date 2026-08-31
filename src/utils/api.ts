@@ -94,7 +94,8 @@ export type PreviewContextParams = {
 export type GenerationContextMeta = {
   chapter_index: number
   chapter_id: string | null
-  context_stats: {
+  chapter_count?: number
+  context_stats?: {
     context_lines: number
     scene_card_lines: number
   }
@@ -104,6 +105,7 @@ export type GenerateChapterRequest = {
   chapter_id?: number
   persist?: boolean
   chapter_index?: number
+  event_chapter_count?: 2 | 3
   outline?: string
   idea?: string
   existing_outline?: string
@@ -400,6 +402,7 @@ export type GenerationTerminal = {
   status: 'success' | 'error' | 'cancelled'
   message?: string
   chapter_id?: string
+  chapter_ids?: string[]
   persisted?: boolean
 }
 
@@ -435,7 +438,7 @@ export async function streamGenerateChapter(
   signal: AbortSignal,
   onEvent: (event: GenerateStreamEvent) => void,
 ): Promise<GenerationTerminal> {
-  const res = await fetch(withBaseUrl('/api/v1/novel/generate'), {
+  const res = await fetch(withBaseUrl(params.event_chapter_count ? '/api/v1/novel/generate-event' : '/api/v1/novel/generate'), {
     method: 'POST',
     headers: {
       Accept: 'text/event-stream',
@@ -477,7 +480,7 @@ export async function streamGenerateChapter(
       if (
         typeof parsed.generation_id !== 'string' ||
         !['success', 'error', 'cancelled'].includes(parsed.status ?? '') ||
-        (parsed.persisted === true && (typeof parsed.chapter_id !== 'string' || !parsed.chapter_id))
+        (parsed.persisted === true && ((typeof parsed.chapter_id !== 'string' || !parsed.chapter_id) && (!Array.isArray(parsed.chapter_ids) || parsed.chapter_ids.length === 0)))
       ) {
         throw new Error('生成终态格式无效')
       }
