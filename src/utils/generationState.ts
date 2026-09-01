@@ -25,11 +25,18 @@ function parseGenerationContextMeta(value: unknown): GenerationContextMeta {
   const meta = value as Record<string, unknown>
   if (!Number.isSafeInteger(meta.chapter_index) || (meta.chapter_index as number) <= 0 || (meta.chapter_id !== null && meta.chapter_id !== undefined && (typeof meta.chapter_id !== 'string' || !meta.chapter_id))) throw new Error('生成上下文摘要格式无效')
   if (Number.isSafeInteger(meta.chapter_count) && (meta.chapter_count as number) >= 2) {
+    const stats = meta.context_stats
+    const contextStats = stats && typeof stats === 'object' && !Array.isArray(stats)
+      ? stats as Record<string, unknown>
+      : {}
     return {
       chapter_index: meta.chapter_index as number,
       chapter_id: typeof meta.chapter_id === 'string' ? meta.chapter_id : null,
       chapter_count: meta.chapter_count as number,
-      context_stats: { context_lines: 0, scene_card_lines: 0 },
+      context_stats: {
+        context_lines: Number.isSafeInteger(contextStats.context_lines) && (contextStats.context_lines as number) >= 0 ? contextStats.context_lines as number : 0,
+        scene_card_lines: Number.isSafeInteger(contextStats.scene_card_lines) && (contextStats.scene_card_lines as number) >= 0 ? contextStats.scene_card_lines as number : 0,
+      },
     }
   }
   const stats = meta.context_stats
@@ -99,7 +106,7 @@ export function reduceGenerationTerminal(terminal: GenerationTerminal): Generati
     state: terminal.status,
     status:
       success && persistedChapterIds.length > 1
-        ? `连续情节已保存 ${persistedChapterIds.length} 章`
+        ? `连续写作批次已保存 ${persistedChapterIds.length} 章；事件未完时可继续下一批`
         : success && persistedChapterId
           ? '生成并保存完成'
           : success

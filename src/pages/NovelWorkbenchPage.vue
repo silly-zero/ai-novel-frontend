@@ -414,7 +414,7 @@ async function onGenerate() {
     }
     if (target.overwrites || eventChapterCount.value > 0) {
       const message = eventChapterCount.value > 0
-        ? `确认连续生成并覆盖第 ${target.chapterIndex}-${target.chapterIndex + eventChapterCount.value - 1} 章？`
+        ? `从第 ${target.chapterIndex} 章开始生成预计 ${eventChapterCount.value} 章连续写作批次？已有章节可能被覆盖，事件未完时可在下一批继续。`
         : '确认覆盖该章节内容？'
       if (!window.confirm(message)) return
     }
@@ -458,11 +458,13 @@ async function onGenerate() {
     generateStatus.value = terminalUpdate.status
     generateError.value = terminalUpdate.error
     savedChapterId.value = terminalUpdate.persistedChapterId
-    persistedMessage.value = terminalUpdate.persistedChapterId
-      ? terminal.status === 'success'
-        ? `正文已保存到章节 ${terminalUpdate.persistedChapterId}`
-        : `正文已保存到章节 ${terminalUpdate.persistedChapterId}，请前往编辑页处理派生失败`
-      : null
+    persistedMessage.value = terminalUpdate.persistedChapterIds.length > 1
+      ? `本次连续写作批次实际保存 ${terminalUpdate.persistedChapterIds.length} 章：${terminalUpdate.persistedChapterIds.join('、')}；事件未完时可继续生成下一批`
+      : terminalUpdate.persistedChapterId
+        ? terminal.status === 'success'
+          ? `正文已保存到章节 ${terminalUpdate.persistedChapterId}`
+          : `正文已保存到章节 ${terminalUpdate.persistedChapterId}，请前往编辑页处理派生失败`
+        : null
     if (terminalUpdate.persistedChapterId) {
       await loadSaveChapters()
       selectedChapterId.value = terminalUpdate.persistedChapterId
@@ -712,11 +714,11 @@ onMounted(() => {
                   type="button"
                   @click="eventChapterCount = option.value as 0 | 2 | 3"
                 >
-                  {{ option.label }}
+                  {{ option.value ? `预计连续 ${option.value} 章` : option.label }}
                 </button>
               </div>
               <div class="mt-2 text-[11px] text-zinc-400">
-                连续模式会先生成同一段情节，再按自然转折拆分章节，不会在每章重新开始故事。
+                连续模式是一次写作批次：从指定章节连续推进，预计生成 2/3 章。章数只是窗口参考，不保证事件在本批次结束；事件未完时下一批会从最后现场继续，不会为了凑章数压缩过渡。
               </div>
             </div>
 
@@ -948,8 +950,8 @@ onMounted(() => {
                   生成上下文摘要
                 </div>
                 <div class="mt-2 grid gap-2 text-[11px] text-zinc-300 sm:grid-cols-3">
-                  <span>目标：第 {{ meta.chapter_index }} 章</span>
-                  <span>{{ meta.chapter_id ? `已有章节 ${meta.chapter_id}` : '新建章节' }}</span>
+                  <span>连续批次起始：第 {{ meta.chapter_index }} 章</span>
+                  <span>预计生成 {{ meta.chapter_count }} 章写作窗口</span>
                   <span>上下文 {{ meta.context_stats.context_lines }} 行 / 场景卡 {{ meta.context_stats.scene_card_lines }} 行</span>
                 </div>
               </div>
